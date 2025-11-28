@@ -17,7 +17,7 @@ import CreateOrder from "./pages/vendor/CreateOrder";
 import About from "./pages/About";
 import NotFound from "./pages/NotFound";
 import { AuthProvider } from "./contexts/AuthContext";
-import ConvAIChatbot from "./components/ConvAIChatbot";
+
 
 // 1. Import the new delivery components
 import DeliveryAuth from "./pages/auth/DeliveryAuth";
@@ -36,7 +36,7 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
-          <ConvAIChatbot />
+
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/auth/callback" element={<AuthCallback />} />

@@ -80,7 +80,8 @@ export const orderService = {
         items:order_items(
           *,
           product:products(*)
-        )
+        ),
+        supplier:suppliers(*)
       `)
       .eq('vendor_id', vendorId)
       .order('created_at', { ascending: false });

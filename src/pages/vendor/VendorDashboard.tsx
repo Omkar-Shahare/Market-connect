@@ -23,11 +23,12 @@ import {
 } from "@/lib/razorpay";
 import { productService } from "@/services/supabaseProduct";
 import { supabase } from "@/lib/supabase";
+import VendorHomeDashboard from "@/components/vendor/VendorHomeDashboard";
 
 const VendorDashboard = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState("group");
+  const [activeTab, setActiveTab] = useState("dashboard");
   const [groupSearch, setGroupSearch] = useState("");
   const [supplierSearch, setSupplierSearch] = useState("");
   const [showJoinModal, setShowJoinModal] = useState(false);
@@ -1275,14 +1276,14 @@ const VendorDashboard = () => {
             <div className="container mx-auto px-4 py-6">
               {/* Orders Tabs */}
               <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-                <TabsList className="grid w-full grid-cols-4 bg-white p-1 rounded-lg border shadow-sm">
-                  <TabsTrigger value="individual" className="data-[state=active]:bg-blue-500 data-[state=active]:text-white">Browse Suppliers</TabsTrigger>
-                  <TabsTrigger value="group" className="data-[state=active]:bg-green-500 data-[state=active]:text-white">Group Orders</TabsTrigger>
-                  <TabsTrigger value="my-orders" className="data-[state=active]:bg-purple-500 data-[state=active]:text-white">My Orders</TabsTrigger>
-                  <TabsTrigger value="price-trends" className="data-[state=active]:bg-orange-500 data-[state=active]:text-white">Price Trends</TabsTrigger>
+                <TabsList className="grid w-full grid-cols-4 lg:w-[600px]">
+                  <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+                  <TabsTrigger value="group">Group Orders</TabsTrigger>
+                  <TabsTrigger value="suppliers">Suppliers</TabsTrigger>
+                  <TabsTrigger value="orders">My Orders</TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="individual" className="space-y-4">
+                <TabsContent value="suppliers" className="space-y-4">
                   <div className="bg-blue-500 text-white rounded-lg p-6 mb-6">
                     <h2 className="text-2xl font-bold mb-2">Find Suppliers</h2>
                     <p className="text-blue-100 mb-4">Search and filter suppliers based on your needs</p>
@@ -1479,6 +1480,15 @@ const VendorDashboard = () => {
                       )}
                     </div>
                   )}
+                </TabsContent>
+
+                <TabsContent value="dashboard" className="space-y-4">
+                  <VendorHomeDashboard
+                    vendorProfile={vendorProfile}
+                    orders={vendorOrders}
+                    groupOrders={groupOrders}
+                    onNavigate={setActiveTab}
+                  />
                 </TabsContent>
 
                 <TabsContent value="group" className="space-y-4">
@@ -1697,7 +1707,7 @@ const VendorDashboard = () => {
                   </div>
                 </TabsContent>
 
-                <TabsContent value="my-orders" className="space-y-4">
+                <TabsContent value="orders" className="space-y-4">
                   <div className="bg-purple-500 text-white rounded-lg p-6 mb-6">
                     <h2 className="text-2xl font-bold mb-2">My Orders</h2>
                     <p className="text-purple-100 mb-4">Track your order history</p>
