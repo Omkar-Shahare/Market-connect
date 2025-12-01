@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { useRazorpay } from 'react-razorpay';
 import { useToast } from '@/hooks/use-toast';
-import { 
-  createRazorpayOptions, 
-  validatePaymentResponse, 
+import {
+  createRazorpayOptions,
+  validatePaymentResponse,
   formatAmount,
   validateRazorpayKey,
-  type RazorpayResponse 
+  type RazorpayResponse
 } from '@/lib/razorpay';
 
 export interface PaymentData {
@@ -18,6 +18,7 @@ export interface PaymentData {
   product?: string;
   group?: any;
   quantity: number;
+  items?: { name: string; quantity: number; price: number }[];
 }
 
 export interface UserDetails {
@@ -53,7 +54,7 @@ export const usePayment = () => {
           currency: 'INR',
           name: 'Test',
           description: 'Test',
-          handler: () => {}
+          handler: () => { }
         });
         console.log('✅ Razorpay instance creation test passed');
       } catch (testError) {
@@ -79,11 +80,11 @@ export const usePayment = () => {
 
     // Check if we should use demo mode (for invalid keys)
     const useDemo = !validateRazorpayKey(import.meta.env.VITE_RAZORPAY_KEY_ID || '');
-    
+
     if (useDemo) {
       console.log('🎭 Using demo mode - simulating Razorpay payment');
       setIsProcessing(true);
-      
+
       // Simulate payment modal and processing
       setTimeout(() => {
         const demoResponse = {
@@ -91,12 +92,14 @@ export const usePayment = () => {
           razorpay_order_id: paymentData.orderId,
           razorpay_signature: 'demo_signature'
         };
-        
+
         console.log('✅ Demo Payment Success:', demoResponse);
-        
-        const successMessage = paymentData.type === 'individual' 
-          ? `Demo: Order placed for ${paymentData.product} - ${formatAmount(paymentData.total)}`
-          : `Demo: Joined ${paymentData.group.product} group - ${formatAmount(paymentData.total)}`;
+
+        const successMessage = paymentData.type === 'individual'
+          ? (paymentData.items && paymentData.items.length > 1
+            ? `Order placed for ${paymentData.items.length} items - ${formatAmount(paymentData.total)}`
+            : `Order placed for ${paymentData.product} - ${formatAmount(paymentData.total)}`)
+          : `Joined ${paymentData.group.product} group - ${formatAmount(paymentData.total)}`;
 
         toast({
           title: "Demo Payment Successful! 🎉",
@@ -111,14 +114,14 @@ export const usePayment = () => {
 
     // Try to use Razorpay from hook or fallback to global
     const RazorpayInstance = Razorpay || (window as any).Razorpay;
-    
+
     if (!RazorpayInstance) {
       console.error('❌ Razorpay instance not available');
       console.error('🌍 Window Razorpay:', !!(window as any).Razorpay);
       console.error('🔑 Environment Key:', import.meta.env.VITE_RAZORPAY_KEY_ID);
-      
+
       const errorMsg = `Payment service is not available. Razorpay: ${!!Razorpay}, Window.Razorpay: ${!!(window as any).Razorpay}, Key: ${import.meta.env.VITE_RAZORPAY_KEY_ID}`;
-      
+
       toast({
         title: "Payment Error - Debug Info",
         description: errorMsg,
@@ -140,8 +143,10 @@ export const usePayment = () => {
         (response: RazorpayResponse) => {
           console.log('✅ Payment Success Response:', response);
           if (validatePaymentResponse(response)) {
-            const successMessage = paymentData.type === 'individual' 
-              ? `Order placed for ${paymentData.product} - ${formatAmount(paymentData.total)}`
+            const successMessage = paymentData.type === 'individual'
+              ? (paymentData.items && paymentData.items.length > 1
+                ? `Order placed for ${paymentData.items.length} items - ${formatAmount(paymentData.total)}`
+                : `Order placed for ${paymentData.product} - ${formatAmount(paymentData.total)}`)
               : `Joined ${paymentData.group.product} group - ${formatAmount(paymentData.total)}`;
 
             toast({
@@ -153,18 +158,18 @@ export const usePayment = () => {
           } else {
             console.error('❌ Payment validation failed');
             console.log('🔍 Response received:', response);
-            
+
             // In test/demo mode, this might be expected
-            const isTestMode = import.meta.env.MODE === 'development' || 
-                              !validateRazorpayKey(import.meta.env.VITE_RAZORPAY_KEY_ID || '');
-            
+            const isTestMode = import.meta.env.MODE === 'development' ||
+              !validateRazorpayKey(import.meta.env.VITE_RAZORPAY_KEY_ID || '');
+
             if (isTestMode) {
               console.log('🎭 Test mode detected - treating as successful');
               toast({
                 title: "Payment Completed! 🎉",
                 description: "Test payment processed successfully. In production, proper validation will be implemented.",
               });
-              
+
               // Treat as successful for demo purposes
               if (onSuccess) onSuccess(response);
             } else {
@@ -191,11 +196,11 @@ export const usePayment = () => {
 
       console.log('⚙️ Razorpay Options Created:', options);
       console.log('🏗️ Creating Razorpay instance...');
-      
+
       try {
         const razorpayInstance = new RazorpayInstance(options);
         console.log('📱 Razorpay instance created successfully');
-        
+
         // Add error event listener
         razorpayInstance.on('payment.failed', function (response) {
           console.error('💥 Razorpay Payment Failed:', response);
@@ -213,7 +218,7 @@ export const usePayment = () => {
         console.log('📱 Razorpay modal opened');
       } catch (razorpayError) {
         console.error('💥 Razorpay instance creation failed:', razorpayError);
-        
+
         // If Razorpay fails, fall back to demo mode
         console.log('🎭 Falling back to demo mode due to Razorpay error');
         setTimeout(() => {
@@ -222,10 +227,10 @@ export const usePayment = () => {
             razorpay_order_id: paymentData.orderId,
             razorpay_signature: 'demo_signature'
           };
-          
+
           console.log('✅ Demo Payment Success (Fallback):', demoResponse);
-          
-          const successMessage = paymentData.type === 'individual' 
+
+          const successMessage = paymentData.type === 'individual'
             ? `Order placed for ${paymentData.product} - ${formatAmount(paymentData.total)}`
             : `Joined ${paymentData.group.product} group - ${formatAmount(paymentData.total)}`;
 
@@ -256,13 +261,15 @@ export const usePayment = () => {
     onSuccess?: () => void
   ) => {
     setIsProcessing(true);
-    
+
     try {
       // Simulate processing time
       await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const successMessage = paymentData.type === 'individual' 
-        ? `COD order for ${paymentData.product} - ${formatAmount(paymentData.total)}. Pay when delivered.`
+
+      const successMessage = paymentData.type === 'individual'
+        ? (paymentData.items && paymentData.items.length > 1
+          ? `COD order for ${paymentData.items.length} items - ${formatAmount(paymentData.total)}. Pay when delivered.`
+          : `COD order for ${paymentData.product} - ${formatAmount(paymentData.total)}. Pay when delivered.`)
         : `Joined ${paymentData.group.product} group - ${formatAmount(paymentData.total)}. Pay when delivered.`;
 
       toast({
@@ -271,7 +278,7 @@ export const usePayment = () => {
       });
 
       if (onSuccess) onSuccess();
-      
+
     } catch (error) {
       toast({
         title: "Order Failed",

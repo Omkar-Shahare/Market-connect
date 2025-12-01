@@ -1,28 +1,43 @@
 import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  LayoutDashboard, BarChart3, Users, Package, Clock, Bell, Menu,
+  TrendingUp, MapPin, CheckCircle, XCircle, Plus, User, Edit,
+  Camera, Mail, Phone, Building, Shield, Star, Calendar, Award, Truck, DollarSign,
+  Settings, HelpCircle, LogOut, Navigation, Target, Search, CreditCard,
+  Trash, PieChart, AlertTriangle, MessageSquare
+} from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart as RechartsPieChart, Pie, Cell, Legend } from 'recharts';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Package, Users, TrendingUp, Clock, MapPin, CheckCircle, XCircle, Plus, User, Edit,
-  Camera, Mail, Phone, Building, Shield, Star, Calendar, Award, Truck, DollarSign,
-  Menu, Settings, HelpCircle, LogOut, Navigation, Target, Search, CreditCard,
-  Trash // <-- ADDED
-} from "lucide-react";
+import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle, SheetClose } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
-import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { productService } from "@/services/supabaseProduct";
 import { supplierApi, SupplierProfile } from "@/services/supplierApi";
 import { orderService } from "@/services/supabaseOrder";
+import { reviewService } from "@/services/supabaseReview";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 
+// Define tab items for reuse
+const tabItems = [
+  { value: "dashboard", label: "Dashboard", icon: LayoutDashboard, color: "bg-green-600" },
+  { value: "analytics", label: "Analytics", icon: BarChart3, color: "bg-indigo-600" },
+  { value: "group", label: "Group Requests", icon: Users, color: "bg-blue-500" },
+  { value: "individual", label: "My Orders", icon: Package, color: "bg-green-500" },
+  { value: "confirmed", label: "Order History", icon: Clock, color: "bg-purple-500" },
+
+];
+
 const SupplierDashboard = () => {
-  const { logout, user } = useAuth();
+  const { logout, user, loading } = useAuth();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState("group");
+  const [activeTab, setActiveTab] = useState("dashboard");
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showGroupModal, setShowGroupModal] = useState(false);
   const [newGroup, setNewGroup] = useState({
     product: "",
@@ -85,6 +100,8 @@ const SupplierDashboard = () => {
   // Fetch supplier profile data
   useEffect(() => {
     const fetchSupplierProfile = async () => {
+      if (loading) return;
+
       if (!user?.id) {
         console.log('No user ID available - redirecting to auth');
         navigate('/supplier/login');
@@ -128,7 +145,7 @@ const SupplierDashboard = () => {
     };
 
     fetchSupplierProfile();
-  }, [user, toast, navigate]);
+  }, [user, loading, toast, navigate]);
 
   // Fetch product groups with real-time updates
   useEffect(() => {
@@ -528,6 +545,7 @@ const SupplierDashboard = () => {
                 ? order.items[0].product[0]?.image_url
                 : order.items[0].product?.image_url)
               : null,
+            items: order.items || [], // Preserve items array
             type: order.order_type || 'individual',
             vendors: 1,
             // Map DB status to UI status
@@ -546,11 +564,20 @@ const SupplierDashboard = () => {
           };
         });
 
+        // Fetch reviews for these orders
+        const ordersWithReviews = await Promise.all(transformedOrders.map(async (order: any) => {
+          const review = await reviewService.getReviewByOrderId(order.id);
+          return {
+            ...order,
+            review: review
+          };
+        }));
+
         // Separate orders if needed, or put all in confirmedOrders for the dashboard view
         // The UI seems to have "Individual Orders" and "Confirmed Orders" tabs.
         // For now, let's populate confirmedOrders as that's where the action buttons are.
-        setConfirmedOrders(transformedOrders);
-        setIndividualOrders(transformedOrders); // Also populate individual for safety if used elsewhere
+        setConfirmedOrders(ordersWithReviews);
+        setIndividualOrders(ordersWithReviews); // Also populate individual for safety if used elsewhere
 
       } catch (error) {
         console.error('Error fetching supplier orders:', error);
@@ -770,9 +797,18 @@ const SupplierDashboard = () => {
   };
 
 
+  // Calculate notification count
+  const lowStockCount = groupRequests.filter(p => parseInt(p.quantity) < 10).length;
+  const newOrderCount = confirmedOrders.length;
+  const reviewCount = confirmedOrders.filter(o => o.review).length;
+  const notificationCount = lowStockCount + newOrderCount + reviewCount;
+
   return (
     <>
-      <Navbar />
+      <Navbar
+        notificationCount={notificationCount}
+        onNotificationClick={() => setActiveTab("notifications")}
+      />
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-green-50 pt-20">
         {/* Loading State */}
         {profileLoading ? (
@@ -855,11 +891,551 @@ const SupplierDashboard = () => {
             <div className="container mx-auto px-4 py-6">
               {/* Orders Tabs */}
               <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-                <TabsList className="grid w-full grid-cols-3 bg-white p-1 rounded-lg border shadow-sm">
-                  <TabsTrigger value="group" className="data-[state=active]:bg-blue-500 data-[state=active]:text-white">Group Requests</TabsTrigger>
-                  <TabsTrigger value="individual" className="data-[state=active]:bg-green-500 data-[state=active]:text-white">My Orders</TabsTrigger>
-                  <TabsTrigger value="confirmed" className="data-[state=active]:bg-purple-500 data-[state=active]:text-white">Order History</TabsTrigger>
+                {/* Mobile Tab Navigation */}
+                <div className="lg:hidden mb-4 flex items-center justify-between bg-white p-4 rounded-lg shadow-sm border">
+                  <span className="font-semibold text-gray-700 flex items-center gap-2">
+                    {(() => {
+                      if (activeTab === 'notifications') {
+                        return (
+                          <>
+                            <Bell className="w-5 h-5" />
+                            Notifications
+                          </>
+                        );
+                      }
+                      const currentItem = tabItems.find(t => t.value === activeTab);
+                      const Icon = currentItem?.icon || LayoutDashboard;
+                      return (
+                        <>
+                          <Icon className="w-5 h-5" />
+                          {currentItem?.label || "Dashboard"}
+                        </>
+                      );
+                    })()}
+                  </span>
+                  <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
+                    <SheetTrigger asChild>
+                      <Button variant="outline" size="icon">
+                        <Menu className="w-5 h-5" />
+                      </Button>
+                    </SheetTrigger>
+                    <SheetContent side="left" className="w-[300px] sm:w-[400px]">
+                      <SheetHeader className="mb-6 text-left">
+                        <SheetTitle>Menu</SheetTitle>
+                      </SheetHeader>
+                      <div className="flex flex-col gap-2">
+                        {tabItems.map((item) => (
+                          <Button
+                            key={item.value}
+                            variant={activeTab === item.value ? "default" : "ghost"}
+                            className={`justify-start ${activeTab === item.value ? item.color : ''}`}
+                            onClick={() => {
+                              setActiveTab(item.value);
+                              setIsMobileMenuOpen(false);
+                            }}
+                          >
+                            <item.icon className="mr-2 h-4 w-4" />
+                            {item.label}
+                          </Button>
+                        ))}
+                      </div>
+                    </SheetContent>
+                  </Sheet>
+                </div>
+
+                {/* Desktop Tab Navigation */}
+                <TabsList className="hidden lg:grid w-full grid-cols-5 bg-white p-1 rounded-lg border shadow-sm">
+                  {tabItems.map((item) => (
+                    <TabsTrigger
+                      key={item.value}
+                      value={item.value}
+                      className={`data-[state=active]:${item.color} data-[state=active]:text-white`}
+                    >
+                      {item.label}
+                    </TabsTrigger>
+                  ))}
                 </TabsList>
+
+                <TabsContent value="notifications" className="space-y-6">
+                  <div className="bg-orange-500 text-white rounded-lg p-6 shadow-lg mb-6">
+                    <h2 className="text-3xl font-bold mb-2">Notifications</h2>
+                    <p className="text-orange-100">Stay updated with real-time alerts and messages.</p>
+                  </div>
+
+                  <div className="space-y-4">
+                    {/* Low Stock Alerts */}
+                    {groupRequests.filter(p => parseInt(p.quantity) < 10).map(product => (
+                      <div key={`stock-${product.id}`} className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg shadow-sm flex items-start gap-4">
+                        <div className="bg-red-100 p-2 rounded-full">
+                          <AlertTriangle className="w-6 h-6 text-red-600" />
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="font-bold text-red-800">Low Stock Alert</h3>
+                          <p className="text-red-700">
+                            <span className="font-semibold">{product.product}</span> is running low ({product.quantity} kg remaining).
+                          </p>
+                          <p className="text-xs text-red-500 mt-1">Update stock immediately to avoid shortages.</p>
+                        </div>
+                        <Button size="sm" variant="destructive" onClick={() => {
+                          handleStartEdit(product);
+                          setActiveTab("group");
+                        }}>Update Stock</Button>
+                      </div>
+                    ))}
+
+                    {/* New Order Alerts */}
+                    {confirmedOrders.slice(0, 10).map(order => (
+                      <div key={`order-${order.id}`} className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-r-lg shadow-sm flex items-start gap-4">
+                        <div className="bg-blue-100 p-2 rounded-full">
+                          <Package className="w-6 h-6 text-blue-600" />
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="font-bold text-blue-800">New Order Received</h3>
+                          <p className="text-blue-700">
+                            <span className="font-semibold">{order.customerName || 'Vendor'}</span> ordered <span className="font-semibold">{order.product}</span> worth <span className="font-semibold">{order.value}</span>.
+                          </p>
+                          <p className="text-xs text-blue-500 mt-1">{new Date(order.createdAt).toLocaleString()}</p>
+                        </div>
+                        <Button size="sm" variant="outline" className="border-blue-200 text-blue-700 hover:bg-blue-100" onClick={() => setActiveTab("confirmed")}>View Order</Button>
+                      </div>
+                    ))}
+
+                    {/* Vendor Messages / Reviews */}
+                    {confirmedOrders.filter(o => o.review).map(order => (
+                      <div key={`review-${order.id}`} className="bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded-r-lg shadow-sm flex items-start gap-4">
+                        <div className="bg-yellow-100 p-2 rounded-full">
+                          <MessageSquare className="w-6 h-6 text-yellow-600" />
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="font-bold text-yellow-800">New Review</h3>
+                          <p className="text-yellow-700">
+                            <span className="font-semibold">{order.review.vendor?.business_name || 'Vendor'}</span> rated you <span className="font-bold">{order.review.rating}/5</span>.
+                          </p>
+                          {order.review.comment && (
+                            <p className="text-sm text-yellow-600 italic mt-1">"{order.review.comment}"</p>
+                          )}
+                          <p className="text-xs text-yellow-500 mt-1">{new Date(order.review.created_at || order.createdAt).toLocaleString()}</p>
+                        </div>
+                      </div>
+                    ))}
+
+                    {groupRequests.filter(p => parseInt(p.quantity) < 10).length === 0 && confirmedOrders.length === 0 && (
+                      <div className="text-center py-12 text-gray-500">
+                        <Bell className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                        <p>No new notifications</p>
+                      </div>
+                    )}
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="analytics" className="space-y-6">
+                  <div className="bg-indigo-600 text-white rounded-lg p-6 shadow-lg mb-6">
+                    <h2 className="text-3xl font-bold mb-2">Business Analytics</h2>
+                    <p className="text-indigo-100">Insights to help you grow your business.</p>
+                  </div>
+
+                  {/* 1. Revenue Overview */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm font-medium text-gray-500">This Month Revenue</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold text-indigo-600">
+                          ₹{confirmedOrders.reduce((acc, order) => {
+                            const orderDate = new Date(order.createdAt);
+                            const now = new Date();
+                            if (orderDate.getMonth() === now.getMonth() && orderDate.getFullYear() === now.getFullYear()) {
+                              const val = parseFloat(order.value.replace('₹', '').replace(/,/g, ''));
+                              return acc + (isNaN(val) ? 0 : val);
+                            }
+                            return acc;
+                          }, 0).toLocaleString()}
+                        </div>
+                        <p className="text-xs text-green-600 flex items-center mt-1">
+                          <TrendingUp className="w-3 h-3 mr-1" />
+                          +12.5% from last month
+                        </p>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm font-medium text-gray-500">This Week Revenue</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold text-indigo-600">
+                          ₹{confirmedOrders.reduce((acc, order) => {
+                            const orderDate = new Date(order.createdAt);
+                            const now = new Date();
+                            const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+                            if (orderDate >= oneWeekAgo) {
+                              const val = parseFloat(order.value.replace('₹', '').replace(/,/g, ''));
+                              return acc + (isNaN(val) ? 0 : val);
+                            }
+                            return acc;
+                          }, 0).toLocaleString()}
+                        </div>
+                        <p className="text-xs text-green-600 flex items-center mt-1">
+                          <TrendingUp className="w-3 h-3 mr-1" />
+                          +5.2% from last week
+                        </p>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm font-medium text-gray-500">Average Order Value</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold text-indigo-600">
+                          {(() => {
+                            if (confirmedOrders.length === 0) return "₹0";
+                            const total = confirmedOrders.reduce((acc, order) => {
+                              const val = parseFloat(order.value.replace('₹', '').replace(/,/g, ''));
+                              return acc + (isNaN(val) ? 0 : val);
+                            }, 0);
+                            return `₹${Math.round(total / confirmedOrders.length).toLocaleString()}`;
+                          })()}
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Based on {confirmedOrders.length} orders
+                        </p>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* 2. Top Selling Products */}
+                    <Card className="col-span-1">
+                      <CardHeader>
+                        <CardTitle>Top Selling Products</CardTitle>
+                        <CardDescription>Most popular items by order count</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="h-[300px] w-full">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart
+                              data={(() => {
+                                const productCounts: Record<string, number> = {};
+                                confirmedOrders.forEach(order => {
+                                  const prod = order.product;
+                                  productCounts[prod] = (productCounts[prod] || 0) + 1;
+                                });
+                                return Object.entries(productCounts)
+                                  .map(([name, count]) => ({ name, count }))
+                                  .sort((a, b) => b.count - a.count)
+                                  .slice(0, 5);
+                              })()}
+                              layout="vertical"
+                              margin={{ top: 5, right: 30, left: 40, bottom: 5 }}
+                            >
+                              <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} />
+                              <XAxis type="number" allowDecimals={false} />
+                              <YAxis type="category" dataKey="name" width={100} tick={{ fontSize: 12 }} />
+                              <RechartsTooltip />
+                              <Bar dataKey="count" fill="#4f46e5" radius={[0, 4, 4, 0]} barSize={30} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* 3. Order Statistics */}
+                    <Card className="col-span-1">
+                      <CardHeader>
+                        <CardTitle>Order Statistics</CardTitle>
+                        <CardDescription>Breakdown by order status</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="flex flex-col md:flex-row items-center justify-center gap-8">
+                          <div className="h-[250px] w-[250px]">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <RechartsPieChart>
+                                <Pie
+                                  data={(() => {
+                                    const stats = {
+                                      Completed: confirmedOrders.filter(o => o.status === 'delivered' || o.status === 'Delivered').length,
+                                      Pending: confirmedOrders.filter(o => o.status === 'pending' || o.status === 'confirmed' || o.status === 'Processing').length,
+                                      Cancelled: confirmedOrders.filter(o => o.status === 'cancelled').length
+                                    };
+                                    // Ensure we have data to show, otherwise show a placeholder
+                                    const data = [
+                                      { name: 'Completed', value: stats.Completed, color: '#22c55e' },
+                                      { name: 'Pending', value: stats.Pending, color: '#eab308' },
+                                      { name: 'Cancelled', value: stats.Cancelled, color: '#ef4444' }
+                                    ].filter(d => d.value > 0);
+
+                                    if (data.length === 0) return [{ name: 'No Data', value: 1, color: '#e5e7eb' }];
+                                    return data;
+                                  })()}
+                                  cx="50%"
+                                  cy="50%"
+                                  innerRadius={60}
+                                  outerRadius={80}
+                                  paddingAngle={5}
+                                  dataKey="value"
+                                >
+                                  {/* We map colors in the data generation above, but need to apply them here */}
+                                  {/* Since we can't easily map inside the Pie component props in this inline style without a separate variable, 
+                                      we'll rely on the Cell component mapping. */}
+                                  {(() => {
+                                    const stats = {
+                                      Completed: confirmedOrders.filter(o => o.status === 'delivered' || o.status === 'Delivered').length,
+                                      Pending: confirmedOrders.filter(o => o.status === 'pending' || o.status === 'confirmed' || o.status === 'Processing').length,
+                                      Cancelled: confirmedOrders.filter(o => o.status === 'cancelled').length
+                                    };
+                                    const data = [
+                                      { name: 'Completed', value: stats.Completed, color: '#22c55e' },
+                                      { name: 'Pending', value: stats.Pending, color: '#eab308' },
+                                      { name: 'Cancelled', value: stats.Cancelled, color: '#ef4444' }
+                                    ].filter(d => d.value > 0);
+                                    if (data.length === 0) return <Cell key="nodata" fill="#e5e7eb" />;
+                                    return data.map((entry, index) => (
+                                      <Cell key={`cell-${index}`} fill={entry.color} />
+                                    ));
+                                  })()}
+                                </Pie>
+                                <RechartsTooltip />
+                                <Legend verticalAlign="bottom" height={36} />
+                              </RechartsPieChart>
+                            </ResponsiveContainer>
+                          </div>
+                          <div className="space-y-4 w-full md:w-auto">
+                            <div className="flex items-center justify-between min-w-[150px]">
+                              <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                                <span className="text-sm text-gray-600">Completed</span>
+                              </div>
+                              <span className="font-bold">{confirmedOrders.filter(o => o.status === 'delivered' || o.status === 'Delivered').length}</span>
+                            </div>
+                            <div className="flex items-center justify-between min-w-[150px]">
+                              <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                                <span className="text-sm text-gray-600">Pending</span>
+                              </div>
+                              <span className="font-bold">{confirmedOrders.filter(o => o.status === 'pending' || o.status === 'confirmed' || o.status === 'Processing').length}</span>
+                            </div>
+                            <div className="flex items-center justify-between min-w-[150px]">
+                              <div className="flex items-center gap-2">
+                                <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                                <span className="text-sm text-gray-600">Cancelled</span>
+                              </div>
+                              <span className="font-bold">{confirmedOrders.filter(o => o.status === 'cancelled').length}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* 4. Customer Satisfaction */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Customer Satisfaction</CardTitle>
+                      <CardDescription>Based on vendor reviews</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex flex-col md:flex-row items-center gap-8">
+                        <div className="text-center md:text-left">
+                          <div className="text-5xl font-bold text-gray-900 mb-2">
+                            {(() => {
+                              const ratedOrders = confirmedOrders.filter(o => o.review?.rating);
+                              if (ratedOrders.length === 0) return "0.0";
+                              const sum = ratedOrders.reduce((acc, o) => acc + o.review.rating, 0);
+                              return (sum / ratedOrders.length).toFixed(1);
+                            })()}
+                          </div>
+                          <div className="flex items-center justify-center md:justify-start gap-1 mb-2">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <Star key={star} className={`w-5 h-5 ${star <= Math.round(
+                                confirmedOrders.filter(o => o.review?.rating).reduce((acc, o) => acc + o.review.rating, 0) /
+                                (confirmedOrders.filter(o => o.review?.rating).length || 1)
+                              ) ? "text-yellow-400 fill-yellow-400" : "text-gray-300"
+                                }`} />
+                            ))}
+                          </div>
+                          <p className="text-sm text-gray-500">
+                            Based on {confirmedOrders.filter(o => o.review).length} reviews
+                          </p>
+                        </div>
+
+                        <div className="flex-1 w-full space-y-2">
+                          {[5, 4, 3, 2, 1].map((rating) => {
+                            const totalReviews = confirmedOrders.filter(o => o.review).length || 1; // Avoid div by 0
+                            const count = confirmedOrders.filter(o => o.review?.rating === rating).length;
+                            const percentage = (count / totalReviews) * 100;
+                            return (
+                              <div key={rating} className="flex items-center gap-4">
+                                <span className="text-sm font-medium w-3">{rating}</span>
+                                <Star className="w-4 h-4 text-gray-400" />
+                                <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-yellow-400 rounded-full"
+                                    style={{ width: `${percentage}%` }}
+                                  ></div>
+                                </div>
+                                <span className="text-sm text-gray-500 w-8 text-right">{count}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="dashboard" className="space-y-6">
+                  {/* Welcome Section */}
+                  <div className="bg-green-600 text-white rounded-lg p-6 shadow-lg">
+                    <h2 className="text-3xl font-bold mb-2">Welcome back, {supplierData?.fullName || 'Supplier'}!</h2>
+                    <p className="text-green-100">Here's what's happening with your business today.</p>
+                  </div>
+
+                  {/* Low Stock Warning in Dashboard */}
+                  {groupRequests.some(p => parseInt(p.quantity) < 10) && (
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center justify-between animate-pulse">
+                      <div className="flex items-center gap-3">
+                        <AlertTriangle className="w-6 h-6 text-red-600" />
+                        <div>
+                          <h3 className="font-bold text-red-800">Low Stock Warning</h3>
+                          <p className="text-sm text-red-700">
+                            {groupRequests.filter(p => parseInt(p.quantity) < 10).length} products are running low on stock.
+                          </p>
+                        </div>
+                      </div>
+                      <Button variant="destructive" size="sm" onClick={() => setActiveTab("notifications")}>Check Now</Button>
+                    </div>
+                  )}
+
+                  {/* Stats Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {/* Total Orders */}
+                    <Card>
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
+                        <Package className="h-4 w-4 text-muted-foreground" />
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold">{confirmedOrders.length}</div>
+                        <p className="text-xs text-muted-foreground">
+                          {confirmedOrders.filter(o => o.status === 'pending').length} pending
+                        </p>
+                      </CardContent>
+                    </Card>
+
+                    {/* Total Products */}
+                    <Card>
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Total Products</CardTitle>
+                        <Package className="h-4 w-4 text-muted-foreground" />
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold">{groupRequests.length}</div>
+                        <p className="text-xs text-muted-foreground">
+                          {groupRequests.length} active products
+                        </p>
+                      </CardContent>
+                    </Card>
+
+                    {/* Monthly Revenue */}
+                    <Card>
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Monthly Revenue</CardTitle>
+                        <DollarSign className="h-4 w-4 text-muted-foreground" />
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold">₹{confirmedOrders.reduce((acc, order) => {
+                          const orderDate = new Date(order.createdAt);
+                          const now = new Date();
+                          if (orderDate.getMonth() === now.getMonth() && orderDate.getFullYear() === now.getFullYear()) {
+                            const val = parseFloat(order.value.replace('₹', '').replace(/,/g, ''));
+                            return acc + (isNaN(val) ? 0 : val);
+                          }
+                          return acc;
+                        }, 0).toLocaleString()}</div>
+                        <p className="text-xs text-muted-foreground">
+                          Current month
+                        </p>
+                      </CardContent>
+                    </Card>
+
+                    {/* Rating */}
+                    <Card>
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Rating</CardTitle>
+                        <Star className="h-4 w-4 text-muted-foreground" />
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold">{(() => {
+                          const ratedOrders = confirmedOrders.filter(o => o.review?.rating);
+                          if (ratedOrders.length === 0) return "N/A";
+                          const sum = ratedOrders.reduce((acc, o) => acc + o.review.rating, 0);
+                          return (sum / ratedOrders.length).toFixed(1);
+                        })()}</div>
+                        <p className="text-xs text-muted-foreground">
+                          Average rating
+                        </p>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* Quick Actions & Recent Orders */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* Quick Actions */}
+                    <Card className="col-span-1">
+                      <CardHeader>
+                        <CardTitle>Quick Actions</CardTitle>
+                        <CardDescription>Manage your store efficiently</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <Button className="w-full justify-start" onClick={() => setShowGroupModal(true)}>
+                          <Plus className="mr-2 h-4 w-4" /> Add New Product
+                        </Button>
+                        <Button variant="outline" className="w-full justify-start" onClick={() => setActiveTab("group")}>
+                          <Package className="mr-2 h-4 w-4" /> Check Stock
+                        </Button>
+                        <Button variant="outline" className="w-full justify-start" onClick={() => setActiveTab("individual")}>
+                          <Clock className="mr-2 h-4 w-4" /> View Pending Orders
+                        </Button>
+                      </CardContent>
+                    </Card>
+
+                    {/* Recent Orders */}
+                    <Card className="col-span-1 lg:col-span-2">
+                      <CardHeader>
+                        <CardTitle>Recent Orders</CardTitle>
+                        <CardDescription>Latest orders from vendors</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-4">
+                          {confirmedOrders.slice(0, 5).map(order => (
+                            <div key={order.id} className="flex items-center justify-between border-b pb-4 last:border-0 last:pb-0">
+                              <div className="flex items-center gap-4">
+                                <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center overflow-hidden">
+                                  {order.image ? (
+                                    <img src={order.image} alt={order.product} className="w-full h-full object-cover" />
+                                  ) : (
+                                    <Package className="w-5 h-5 text-gray-500" />
+                                  )}
+                                </div>
+                                <div>
+                                  <p className="font-medium">{order.product}</p>
+                                  <p className="text-sm text-gray-500">{order.customerName} • {new Date(order.createdAt).toLocaleDateString()}</p>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <p className="font-bold">{order.value}</p>
+                                <Badge variant={order.status === 'delivered' ? 'default' : 'secondary'}>{order.status}</Badge>
+                              </div>
+                            </div>
+                          ))}
+                          {confirmedOrders.length === 0 && <p className="text-center text-gray-500">No recent orders</p>}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </TabsContent>
                 <TabsContent value="group" className="space-y-4">
                   <div className="bg-blue-500 text-white rounded-lg p-6 mb-6">
                     <h2 className="text-2xl font-bold mb-2">Group Order Requests</h2>
@@ -1039,7 +1615,18 @@ const SupplierDashboard = () => {
                               )}
                             </div>
                           </div>
-                          <div className="font-semibold text-lg text-gray-900">{order.product}</div>
+                          {order.items && order.items.length > 0 ? (
+                            <div className="space-y-1 mb-2">
+                              {order.items.map((item: any, idx: number) => (
+                                <div key={idx} className="flex justify-between items-baseline">
+                                  <span className="font-semibold text-lg text-gray-900 truncate pr-2">{item.product?.name || 'Product'}</span>
+                                  <span className="text-sm text-gray-600 whitespace-nowrap">x {item.quantity}</span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="font-semibold text-lg text-gray-900">{order.product}</div>
+                          )}
                           <div className="text-gray-600 text-sm">by {order.vendor}</div>
                           {order.stallName && (
                             <div className="text-gray-500 text-xs">Stall: {order.stallName}</div>
@@ -1105,31 +1692,61 @@ const SupplierDashboard = () => {
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                       {confirmedOrders.map((order) => (
-                        <div key={order.id} className="bg-white rounded-lg shadow-sm border hover:shadow-md transition-shadow p-4">
+                        <div key={order.id} className="bg-white border rounded-lg p-4 hover:shadow-md transition-shadow">
                           <div className="mb-3">
-                            <div className="w-full h-32 bg-purple-100 rounded-lg flex items-center justify-center mb-3 overflow-hidden">
-                              {order.image ? (
-                                <img src={order.image} alt={order.product} className="w-full h-full object-cover" />
-                              ) : (
-                                <Package className="w-12 h-12 text-purple-600" />
-                              )}
+                            {order.image ? (
+                              <div className="w-full h-32 bg-gray-100 rounded-lg flex items-center justify-center mb-3 overflow-hidden">
+                                <img src={order.image} alt="Order" className="w-full h-full object-cover" />
+                              </div>
+                            ) : (
+                              <div className="w-full h-32 bg-gray-100 rounded-lg flex items-center justify-center mb-3">
+                                <Package className="w-12 h-12 text-gray-400" />
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex-1">
+                            <div className="flex justify-between items-start mb-2">
+                              <div className="flex-1">
+                                {order.items && order.items.length > 0 ? (
+                                  <div className="space-y-1 mb-2">
+                                    {order.items.map((item: any, idx: number) => (
+                                      <div key={idx} className="flex justify-between items-baseline border-b border-gray-50 pb-1 last:border-0">
+                                        <span className="font-semibold text-lg text-gray-900 truncate pr-2">{item.product?.name || 'Product'}</span>
+                                        <span className="text-sm text-gray-600 whitespace-nowrap">x {item.quantity}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <h3 className="font-semibold text-lg mb-1">{order.product}</h3>
+                                )}
+
+                                <div className="text-sm text-gray-500 mb-2">
+                                  {order.type === 'group' ? 'Group Order' : 'Individual Order'}
+                                </div>
+
+                                <div className="flex flex-wrap items-center gap-2 text-sm text-gray-500 mb-3">
+                                  <div className="flex items-center gap-1">
+                                    <Users className="w-3 h-3" />
+                                    <span>{order.vendors} vendors</span>
+                                  </div>
+                                  <Badge variant={order.status === 'delivered' ? 'default' : 'secondary'} className="capitalize">
+                                    {order.status}
+                                  </Badge>
+                                </div>
+                              </div>
                             </div>
-                          </div>
-                          <div className="font-semibold text-lg text-gray-900">{order.product}</div>
-                          <div className="text-gray-600 text-sm">{order.type} Order</div>
-                          <div className="flex items-center text-xs text-gray-500 mt-1 mb-2">
-                            {order.vendors && <span>{order.vendors} vendors</span>}
-                            <span className={`ml-2 px-2 py-0.5 rounded text-xs capitalize ${order.status === 'Ready to Ship' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-700'}`}>
-                              {order.status}
-                            </span>
-                          </div>
-                          <div className="text-purple-600 font-bold text-lg mb-1">{order.value}</div>
-                          <div className="flex items-center text-xs text-gray-500 mb-2">
-                            <span>Qty: {order.quantity}</span>
-                          </div>
-                          <div className="flex items-center text-xs text-gray-500 mb-3">
-                            <Clock className="w-3 h-3 mr-1" />
-                            <span>Deliver {order.deliveryDate}</span>
+
+                            <div className="flex items-center justify-between pt-3 border-t">
+                              <div>
+                                <div className="text-xl font-bold text-purple-600">{order.value}</div>
+                                <div className="text-xs text-gray-500">Total Qty: {order.quantity}</div>
+                              </div>
+                              <div className="text-xs text-gray-400 flex items-center gap-1 bg-gray-50 px-2 py-1 rounded">
+                                <Clock className="w-3 h-3" />
+                                <span>Deliver {order.deliveryDate}</span>
+                              </div>
+                            </div>
                           </div>
                           {order.status !== 'Delivered' && order.status !== 'delivered' && (
                             <div className="space-y-2">
@@ -1232,6 +1849,27 @@ const SupplierDashboard = () => {
                           {(order.status === 'Delivered' || order.status === 'delivered') && (
                             <div className="w-full bg-green-100 text-green-800 py-2 rounded-lg font-medium text-center">
                               ✓ Delivered
+                            </div>
+                          )}
+
+                          {/* Review Section */}
+                          {order.review && (
+                            <div className="mt-3 p-3 bg-yellow-50 rounded-lg border border-yellow-100">
+                              <div className="flex items-center gap-1 mb-1">
+                                {[...Array(5)].map((_, i) => (
+                                  <Star
+                                    key={i}
+                                    className={`w-4 h-4 ${i < order.review.rating ? "text-yellow-400 fill-yellow-400" : "text-gray-300"}`}
+                                  />
+                                ))}
+                                <span className="text-sm font-medium ml-1">{order.review.rating}.0</span>
+                              </div>
+                              {order.review.comment && (
+                                <p className="text-sm text-gray-600 italic">"{order.review.comment}"</p>
+                              )}
+                              <div className="text-xs text-gray-400 mt-1">
+                                - {order.review.vendor?.business_name || "Vendor"}
+                              </div>
                             </div>
                           )}
                         </div>

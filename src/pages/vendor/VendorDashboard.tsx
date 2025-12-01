@@ -24,6 +24,10 @@ import {
 import { productService } from "@/services/supabaseProduct";
 import { supabase } from "@/lib/supabase";
 import VendorHomeDashboard from "@/components/vendor/VendorHomeDashboard";
+import { reviewService } from "@/services/supabaseReview";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 const VendorDashboard = () => {
   const { user, logout } = useAuth();
@@ -45,6 +49,7 @@ const VendorDashboard = () => {
   const [paymentDetails, setPaymentDetails] = useState(null);
   const [orderQuantity, setOrderQuantity] = useState(1);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [cartItems, setCartItems] = useState<{ product: any, quantity: number, price: number }[]>([]);
 
   // Payment success states
   const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
@@ -91,6 +96,13 @@ const VendorDashboard = () => {
   // Order-related states
   const [vendorOrders, setVendorOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
+
+  // Review-related states
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [reviewOrder, setReviewOrder] = useState(null);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState("");
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
 
   // Auto-detect location on component mount
   useEffect(() => {
@@ -221,20 +233,23 @@ const VendorDashboard = () => {
       };
 
       // Prepare order payload for Supabase
+      // Prepare order payload for Supabase
       const orderPayload = {
         order: {
-          // id: paymentData.orderId, // REMOVED: Let Supabase generate UUID
           vendor_id: vendorProfile.id,
           supplier_id: supplierId,
-          // order_type is not in the schema, mapping to notes or ignoring if not needed. 
-          // Schema has: order_number, status, total_amount, delivery_address, delivery_date, notes
           order_number: paymentData.orderId,
           status: 'confirmed' as 'confirmed',
           total_amount: paymentData.total,
           delivery_address: currentLocation?.name || 'Location not provided',
           notes: `Order Type: ${paymentData.type}. Payment Method: ${paymentResponse?.razorpay_payment_id ? 'online' : 'cod'}. Payment ID: ${paymentResponse?.razorpay_payment_id || paymentResponse?.paymentId}`
         },
-        items: [{
+        items: paymentData.items ? paymentData.items.map(item => ({
+          product_id: item.product.groupId || item.product.id, // Use groupId if available (for mapped suppliers) or direct id
+          quantity: item.quantity,
+          unit_price: item.price,
+          total_price: item.price * item.quantity
+        })) : [{
           product_id: paymentData.type === 'individual' ? paymentData.supplier.groupId : paymentData.group.id,
           quantity: paymentData.quantity,
           unit_price: paymentData.pricePerKg,
@@ -282,13 +297,19 @@ const VendorDashboard = () => {
       console.log('Vendor orders response:', orders);
 
       // Parse JSON fields if needed, but Supabase returns items as object array now
-      const ordersWithParsedData = orders.map((order: any) => ({
-        ...order,
-        items: order.items, // Already an array from Supabase join
-        image: order.items && order.items.length > 0 ? order.items[0].product?.image_url : null,
-        customer_details: order.customer_details ?
-          (typeof order.customer_details === 'string' ? JSON.parse(order.customer_details) : order.customer_details)
-          : null
+      const ordersWithParsedData = await Promise.all(orders.map(async (order: any) => {
+        // Check if order has review
+        const review = await reviewService.getReviewByOrderId(order.id);
+
+        return {
+          ...order,
+          items: order.items, // Already an array from Supabase join
+          image: order.items && order.items.length > 0 ? order.items[0].product?.image_url : null,
+          customer_details: order.customer_details ?
+            (typeof order.customer_details === 'string' ? JSON.parse(order.customer_details) : order.customer_details)
+            : null,
+          has_review: !!review
+        };
       }));
 
       setVendorOrders(ordersWithParsedData);
@@ -531,36 +552,109 @@ const VendorDashboard = () => {
     setShowGroupSuggestionsModal(true);
   };
 
-  const handleOrderNow = (supplier) => {
+  const handleOrderNow = async (supplier) => {
     setSelectedSupplier(supplier);
     setOrderQuantity(1);
+    setCartItems([]); // Reset cart
+
+    // Initialize cart with the selected product
+    const price = parseFloat(supplier.originalPrice || supplier.price.replace('₹', '').replace('/kg', ''));
+    setCartItems([{ product: supplier, quantity: 1, price }]);
+
+    // Fetch other products from this supplier
+    try {
+      if (supplier.id) {
+        const products = await productService.getProductsBySupplierId(supplier.id);
+        // Map products to the format expected by the UI
+        const mappedProducts = products
+          .filter(p => p.name !== supplier.product) // Exclude current product
+          .map(p => ({
+            id: p.supplier_id, // Keep supplier ID as main ID for consistency with transformGroupsToSuppliers
+            groupId: p.id, // Product ID
+            image: p.image_url,
+            name: supplier.name, // Supplier name
+            product: p.name,
+            price: `₹${p.price_per_unit}/kg`,
+            originalPrice: p.price_per_unit,
+            location: supplier.location,
+            latitude: supplier.latitude,
+            longitude: supplier.longitude,
+            verified: supplier.verified,
+            rating: supplier.rating,
+            deliveryRadius: supplier.deliveryRadius,
+            deliveryCharge: supplier.deliveryCharge
+          }));
+
+        setSelectedSupplier(prev => ({
+          ...prev,
+          otherProducts: mappedProducts
+        }));
+      }
+    } catch (error) {
+      console.error('Error fetching supplier products:', error);
+    }
+
     setShowSupplierModal(true);
   };
 
-  const handlePlaceOrder = (supplier, product) => {
+  const addToCart = (product, quantity) => {
+    setCartItems(prev => {
+      const existing = prev.find(item => item.product.product === product.product);
+      if (existing) {
+        return prev.map(item => item.product.product === product.product ? { ...item, quantity: item.quantity + quantity } : item);
+      }
+      const price = parseFloat(product.originalPrice || product.price.replace('₹', '').replace('/kg', ''));
+      return [...prev, { product, quantity, price }];
+    });
+    toast({
+      title: "Added to Cart",
+      description: `${product.product} added to your order.`,
+    });
+  };
+
+  const removeFromCart = (productName) => {
+    setCartItems(prev => prev.filter(item => item.product.product !== productName));
+  };
+
+  const updateCartQuantity = (productName, quantity) => {
+    if (quantity < 1) return;
+    setCartItems(prev => prev.map(item => item.product.product === productName ? { ...item, quantity } : item));
+  };
+
+  const handlePlaceOrder = () => {
+    if (cartItems.length === 0) {
+      toast({
+        title: "Cart Empty",
+        description: "Please add items to your order.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     // Calculate total cost including delivery
-    const productPrice = parseFloat(supplier.originalPrice || supplier.price.replace('₹', '').replace('/kg', ''));
+    const subtotal = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
     const distance = currentLocation ? calculateDistance(
       currentLocation.latitude,
       currentLocation.longitude,
-      supplier.latitude,
-      supplier.longitude
+      selectedSupplier.latitude,
+      selectedSupplier.longitude
     ) : 0;
 
-    const deliveryCharge = isSupplierInDeliveryRange(supplier)
-      ? calculateDeliveryCharge(distance, supplier.deliveryCharge)
+    const deliveryCharge = isSupplierInDeliveryRange(selectedSupplier)
+      ? calculateDeliveryCharge(distance, selectedSupplier.deliveryCharge)
       : 0;
 
-    const subtotal = productPrice * orderQuantity;
     const tax = calculateTax(subtotal); // 5% GST
     const total = subtotal + deliveryCharge + tax;
 
     const paymentData = {
       type: 'individual',
-      supplier: supplier,
-      product: product,
-      quantity: orderQuantity,
-      pricePerKg: productPrice,
+      supplier: selectedSupplier,
+      items: cartItems,
+      product: cartItems.map(i => i.product.product).join(', '),
+      quantity: cartItems.reduce((sum, i) => sum + i.quantity, 0),
+      pricePerKg: 0, // Not relevant for multi-item
       subtotal: subtotal,
       deliveryCharge: deliveryCharge,
       tax: tax,
@@ -1161,6 +1255,46 @@ const VendorDashboard = () => {
 
   const [groupOrders, setGroupOrders] = useState<any[]>([]);
 
+  const handleRateOrder = (order) => {
+    setReviewOrder(order);
+    setReviewRating(5);
+    setReviewComment("");
+    setShowReviewModal(true);
+  };
+
+  const submitReview = async () => {
+    if (!reviewOrder || !vendorProfile?.id) return;
+
+    setIsSubmittingReview(true);
+    try {
+      await reviewService.createReview({
+        order_id: reviewOrder.id,
+        vendor_id: vendorProfile.id,
+        supplier_id: reviewOrder.supplier_id,
+        rating: reviewRating,
+        comment: reviewComment
+      });
+
+      toast({
+        title: "Review Submitted",
+        description: "Thank you for your feedback!",
+      });
+
+      setShowReviewModal(false);
+      // Refresh orders to update the UI (if we were showing "Rated" status)
+      fetchVendorOrders();
+    } catch (error) {
+      console.error('Error submitting review:', error);
+      toast({
+        title: "Error",
+        description: "Failed to submit review. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSubmittingReview(false);
+    }
+  };
+
   return (
     <>
       <Navbar />
@@ -1739,9 +1873,17 @@ const VendorDashboard = () => {
                               )}
                             </div>
                             <div>
-                              <div className="font-semibold text-lg text-gray-900 mb-1">
-                                {order.items && order.items.length > 0 ? order.items[0].product?.name : 'Unknown Product'}
-                                ({order.items && order.items.length > 0 ? order.items[0].quantity : 0}kg)
+                              <div className="space-y-1 mb-1">
+                                {order.items && order.items.length > 0 ? (
+                                  order.items.map((item: any, idx: number) => (
+                                    <div key={idx} className="font-semibold text-lg text-gray-900">
+                                      {item.product?.name || 'Unknown Product'}
+                                      <span className="text-gray-600 text-sm font-normal ml-2">({item.quantity}kg)</span>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <div className="font-semibold text-lg text-gray-900">Unknown Product</div>
+                                )}
                               </div>
                               <div className="text-gray-600 text-sm mb-1">
                                 Order ID: {order.id}
@@ -1765,19 +1907,37 @@ const VendorDashboard = () => {
                               }`}>
                               {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
                             </div>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="font-medium border-purple-500 text-purple-600 hover:bg-purple-50"
-                              onClick={() => {
-                                toast({
-                                  title: "Order Details",
-                                  description: `Order ${order.id} - ${order.status}`,
-                                });
-                              }}
-                            >
-                              View Details
-                            </Button>
+                            <div className="flex justify-end gap-2 mt-4">
+                              {order.status === 'delivered' && !order.has_review && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleRateOrder(order)}
+                                  className="flex items-center gap-1 text-yellow-600 border-yellow-600 hover:bg-yellow-50"
+                                >
+                                  <Star className="h-4 w-4" />
+                                  Rate Supplier
+                                </Button>
+                              )}
+                              {order.has_review && (
+                                <Button variant="ghost" size="sm" disabled className="text-green-600">
+                                  <CheckCircle2 className="h-4 w-4 mr-1" /> Rated
+                                </Button>
+                              )}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="font-medium border-purple-500 text-purple-600 hover:bg-purple-50"
+                                onClick={() => {
+                                  toast({
+                                    title: "Order Details",
+                                    description: `Order ${order.id} - ${order.status}`,
+                                  });
+                                }}
+                              >
+                                View Details
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       ))
@@ -1962,7 +2122,7 @@ const VendorDashboard = () => {
                       {currentLocation && (
                         <div className="bg-blue-50 rounded-lg p-3 mt-3">
                           <div className="flex items-center gap-2 mb-2">
-                            <MapPin className="w-4 h-4 text-blue-600" />
+                            <Truck className="w-4 h-4 text-blue-600" />
                             <span className="text-sm font-medium text-blue-800">Delivery Information</span>
                           </div>
                           <div className="grid grid-cols-2 gap-4 text-sm">
@@ -1996,9 +2156,93 @@ const VendorDashboard = () => {
                     </button>
                   </div>
 
+                  {/* Your Cart Section */}
+                  {cartItems.length > 0 && (
+                    <div className="mb-6 bg-gray-50 p-4 rounded-lg border">
+                      <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                        <ShoppingCart className="w-5 h-5" />
+                        Your Cart ({cartItems.reduce((a, b) => a + b.quantity, 0)} items)
+                      </h3>
+                      <div className="space-y-3 max-h-60 overflow-y-auto">
+                        {cartItems.map((item, idx) => (
+                          <div key={idx} className="flex justify-between items-center bg-white p-3 rounded border shadow-sm">
+                            <div className="flex items-center gap-3">
+                              <img src={item.product.image} alt={item.product.product} className="w-10 h-10 rounded object-cover" />
+                              <div>
+                                <div className="font-medium">{item.product.product}</div>
+                                <div className="text-sm text-gray-500">₹{item.price}/kg</div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-4">
+                              <div className="flex items-center border rounded bg-gray-50">
+                                <button
+                                  className="px-2 py-1 hover:bg-gray-200"
+                                  onClick={() => updateCartQuantity(item.product.product, item.quantity - 1)}
+                                >-</button>
+                                <span className="px-2 font-medium">{item.quantity}</span>
+                                <button
+                                  className="px-2 py-1 hover:bg-gray-200"
+                                  onClick={() => updateCartQuantity(item.product.product, item.quantity + 1)}
+                                >+</button>
+                              </div>
+                              <div className="font-bold text-blue-600 w-16 text-right">₹{(item.price * item.quantity).toFixed(0)}</div>
+                              <button
+                                onClick={() => removeFromCart(item.product.product)}
+                                className="text-gray-400 hover:text-red-500 p-1"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="mt-4 pt-3 border-t space-y-2">
+                        {/* Totals */}
+                        {(() => {
+                          const subtotal = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                          const deliveryCharge = currentLocation && isSupplierInDeliveryRange(selectedSupplier) ? selectedSupplier.deliveryCharge : 0;
+                          const tax = Math.round(subtotal * 0.05);
+                          const total = subtotal + deliveryCharge + tax;
+
+                          return (
+                            <>
+                              <div className="flex justify-between text-sm">
+                                <span>Subtotal</span>
+                                <span>₹{subtotal.toFixed(0)}</span>
+                              </div>
+                              <div className="flex justify-between text-sm">
+                                <span>Delivery Charge</span>
+                                <span className={isSupplierInDeliveryRange(selectedSupplier) ? "text-green-600" : "text-red-600"}>
+                                  {isSupplierInDeliveryRange(selectedSupplier) ? `₹${deliveryCharge}` : "Not Available"}
+                                </span>
+                              </div>
+                              <div className="flex justify-between text-sm">
+                                <span>GST (5%)</span>
+                                <span>₹{tax.toFixed(0)}</span>
+                              </div>
+                              <div className="flex justify-between font-bold text-lg pt-2 border-t mt-2">
+                                <span>Grand Total</span>
+                                <span className="text-blue-600">₹{total.toFixed(0)}</span>
+                              </div>
+                            </>
+                          );
+                        })()}
+                      </div>
+
+                      <button
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium mt-4 shadow-lg shadow-blue-200 transition-all hover:shadow-blue-300"
+                        onClick={handlePlaceOrder}
+                        disabled={!isSupplierInDeliveryRange(selectedSupplier)}
+                      >
+                        {isSupplierInDeliveryRange(selectedSupplier) ? "Proceed to Payment" : "Delivery Not Available"}
+                      </button>
+                    </div>
+                  )}
+
                   {/* Current Product */}
                   <div className="mb-6">
-                    <h3 className="text-lg font-semibold mb-3">Selected Product</h3>
+                    <h3 className="text-lg font-semibold mb-3">Add Items</h3>
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                       <div className="flex items-center gap-4 mb-4">
                         <img src={selectedSupplier.image} alt={selectedSupplier.product} className="w-20 h-20 object-cover rounded-lg" />
@@ -2008,7 +2252,7 @@ const VendorDashboard = () => {
                         </div>
                       </div>
 
-                      {/* Quantity and Total Calculation */}
+                      {/* Quantity */}
                       <div className="bg-white rounded-lg p-4 mb-4">
                         <div className="grid grid-cols-2 gap-4">
                           <div>
@@ -2023,57 +2267,49 @@ const VendorDashboard = () => {
                             />
                           </div>
                           <div>
-                            <label className="block text-sm font-medium mb-2">Subtotal</label>
+                            <label className="block text-sm font-medium mb-2">Item Total</label>
                             <div className="text-lg font-bold text-blue-600">
                               ₹{(parseFloat(selectedSupplier.originalPrice || selectedSupplier.price.replace('₹', '').replace('/kg', '')) * orderQuantity).toFixed(2)}
                             </div>
                           </div>
                         </div>
-
-                        {currentLocation && isSupplierInDeliveryRange(selectedSupplier) && (
-                          <div className="mt-3 pt-3 border-t">
-                            <div className="flex justify-between text-sm">
-                              <span>Delivery Charge:</span>
-                              <span className="font-medium">₹{selectedSupplier.deliveryCharge}</span>
-                            </div>
-                          </div>
-                        )}
                       </div>
 
                       <button
-                        className="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium"
-                        onClick={() => handlePlaceOrder(selectedSupplier, selectedSupplier.product)}
+                        className="w-full bg-white border-2 border-blue-600 text-blue-600 hover:bg-blue-50 px-6 py-3 rounded-lg font-medium transition-colors"
+                        onClick={() => {
+                          addToCart(selectedSupplier, orderQuantity);
+                          setOrderQuantity(1); // Reset quantity after adding
+                        }}
                       >
-                        Proceed to Payment - ₹{(() => {
-                          const productPrice = parseFloat(selectedSupplier.originalPrice || selectedSupplier.price.replace('₹', '').replace('/kg', ''));
-                          const deliveryCharge = currentLocation && isSupplierInDeliveryRange(selectedSupplier) ? selectedSupplier.deliveryCharge : 0;
-                          const subtotal = productPrice * orderQuantity;
-                          const tax = Math.round(subtotal * 0.05);
-                          return (subtotal + deliveryCharge + tax).toFixed(0);
-                        })()}
+                        {cartItems.some(item => item.product.product === selectedSupplier.product) ? "Update Cart" : "Add to Cart"}
                       </button>
                     </div>
                   </div>
 
                   {/* Other Products from Same Supplier */}
-                  <div className="mb-6">
-                    <h3 className="text-lg font-semibold mb-3">More from {selectedSupplier.name}</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      {selectedSupplier.otherProducts.map((product, index) => (
-                        <div key={index} className="bg-white border rounded-lg p-4 hover:shadow-md transition-shadow">
-                          <img src={product.image} alt={product.name} className="w-full h-32 object-cover rounded-lg mb-3" />
-                          <div className="font-semibold">{product.name}</div>
-                          <div className="text-blue-600 font-bold mb-2">{product.price}</div>
-                          <button
-                            className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-medium transition-colors"
-                            onClick={() => handlePlaceOrder(selectedSupplier, product.name)}
-                          >
-                            Add to Order
-                          </button>
-                        </div>
-                      ))}
+                  {selectedSupplier.otherProducts && selectedSupplier.otherProducts.length > 0 && (
+                    <div className="mb-6">
+                      <h3 className="text-lg font-semibold mb-3">More from {selectedSupplier.name}</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {selectedSupplier.otherProducts.map((product, index) => (
+                          <div key={index} className="bg-white border rounded-lg p-4 hover:shadow-md transition-shadow flex flex-col">
+                            <img src={product.image} alt={product.product} className="w-full h-32 object-cover rounded-lg mb-3" />
+                            <div className="font-semibold">{product.product}</div>
+                            <div className="text-blue-600 font-bold mb-2">{product.price}</div>
+                            <div className="mt-auto">
+                              <button
+                                className="w-full bg-blue-100 hover:bg-blue-200 text-blue-700 py-2 rounded-lg font-medium transition-colors text-sm"
+                                onClick={() => addToCart(product, 1)}
+                              >
+                                Add to Cart
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Similar Suppliers */}
                   <div>
@@ -2790,6 +3026,50 @@ const VendorDashboard = () => {
         )}
       </div>
       <Footer />
+      {/* Review Modal */}
+      <Dialog open={showReviewModal} onOpenChange={setShowReviewModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Rate Supplier</DialogTitle>
+            <DialogDescription>
+              Share your experience with this supplier. Your review helps other vendors.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-4">
+            <div className="flex flex-col gap-2">
+              <Label>Rating</Label>
+              <div className="flex gap-1">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    type="button"
+                    onClick={() => setReviewRating(star)}
+                    className={`p-1 rounded-full transition-colors ${reviewRating >= star ? 'text-yellow-500' : 'text-gray-300'}`}
+                  >
+                    <Star className="h-8 w-8 fill-current" />
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="comment">Comment</Label>
+              <Textarea
+                id="comment"
+                placeholder="Write your review here..."
+                value={reviewComment}
+                onChange={(e) => setReviewComment(e.target.value)}
+                rows={4}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowReviewModal(false)}>Cancel</Button>
+            <Button onClick={submitReview} disabled={isSubmittingReview}>
+              {isSubmittingReview ? "Submitting..." : "Submit Review"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 };

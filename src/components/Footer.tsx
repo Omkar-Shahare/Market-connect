@@ -2,7 +2,7 @@ import { useNavigate } from "react-router-dom";
 
 const Footer = () => {
   const navigate = useNavigate();
-  
+
   return (
     <footer className="bg-gray-900 text-white py-12">
       <div className="container mx-auto px-4">
@@ -11,14 +11,14 @@ const Footer = () => {
           <div>
             <h3 className="text-xl font-bold mb-4" style={{ fontFamily: 'Georgia, serif' }}>Market Connect</h3>
             <p className="text-gray-400 mb-4">
-              Revolutionizing the marketplace by connecting local vendors with reliable suppliers 
+              Revolutionizing the marketplace by connecting local vendors with reliable suppliers
               through innovative technology solutions.
             </p>
             <p className="text-gray-400 text-sm">
               Empowering businesses to grow together.
             </p>
           </div>
-          
+
           {/* Quick Links */}
           <div>
             <h4 className="text-lg font-semibold mb-4">Quick Links</h4>
@@ -29,7 +29,7 @@ const Footer = () => {
               <li><a href="#contact" className="hover:text-white transition-colors">Contact</a></li>
             </ul>
           </div>
-          
+
           {/* Services */}
           <div>
             <h4 className="text-lg font-semibold mb-4">Services</h4>
@@ -40,18 +40,18 @@ const Footer = () => {
               <li><a href="#api" className="hover:text-white transition-colors">API Documentation</a></li>
             </ul>
           </div>
-          
+
           {/* Contact Info */}
           <div>
             <h4 className="text-lg font-semibold mb-4">Contact Information</h4>
             <div className="text-gray-400 space-y-2">
               <p>Email: info@marketconnect.com</p>
-              <p>Phone: +1 (555) 123-4567</p>
-              <p>Address: 123 Business Street<br />Tech City, TC 12345</p>
+              <p>Phone: +91 9876543210</p>
+              <p>Address: Great Nag Road, Nandanvan, <br />Nagpur - 440024, Maharashtra, India</p>
             </div>
           </div>
         </div>
-        
+
         {/* Bottom Footer */}
         <div className="border-t border-gray-800 mt-8 pt-8">
           <div className="flex flex-col md:flex-row justify-between items-center">
