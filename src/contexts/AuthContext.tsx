@@ -34,7 +34,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(false);
 
       if (session?.user) {
-        checkProfileStatus(session.user.id);
+        const completed = localStorage.getItem(`profileCompleted_${session.user.id}`) === 'true';
+        setProfileCompletedState(completed);
       } else {
         setProfileCompletedState(false);
       }
@@ -46,7 +47,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(session?.user ?? null);
 
         if (session?.user) {
-          checkProfileStatus(session.user.id);
+          const completed = localStorage.getItem(`profileCompleted_${session.user.id}`) === 'true';
+          setProfileCompletedState(completed);
         } else {
           setProfileCompletedState(false);
         }
@@ -56,25 +58,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => subscription.unsubscribe();
   }, []);
 
-  const checkProfileStatus = async (userId: string) => {
-    try {
-      // Check all tables to see if profile exists
-      const [vendor, supplier, delivery] = await Promise.all([
-        supabase.from('vendors').select('id').eq('user_id', userId).maybeSingle(),
-        supabase.from('suppliers').select('id').eq('user_id', userId).maybeSingle(),
-        supabase.from('delivery_partners').select('id').eq('user_id', userId).maybeSingle()
-      ]);
-
-      const isCompleted = !!(vendor.data || supplier.data || delivery.data);
-      setProfileCompletedState(isCompleted);
-    } catch (error) {
-      console.error('Error checking profile status:', error);
-      setProfileCompletedState(false);
-    }
-  };
-
   const setProfileCompleted = (completed: boolean) => {
-    // This is now mostly for local state updates, as the source of truth is the DB
+    if (user) {
+      localStorage.setItem(`profileCompleted_${user.id}`, completed ? 'true' : 'false');
+    }
     setProfileCompletedState(completed);
   };
 
@@ -83,7 +70,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('AuthContext: Starting logout process...');
       await supabase.auth.signOut();
       console.log('AuthContext: Supabase signOut successful');
-      // Profile completion is now checked against DB, no need to clear localStorage
+      if (user) {
+        localStorage.removeItem(`profileCompleted_${user.id}`);
+        console.log('AuthContext: Cleared profile completion status');
+      }
       console.log('AuthContext: Logout process completed');
     } catch (error) {
       console.error('AuthContext: Error signing out:', error);
