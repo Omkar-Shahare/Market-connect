@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, BarChart3, Users, Package, Clock, Bell, Menu,
@@ -512,136 +512,136 @@ const SupplierDashboard = () => {
 
 
   // Fetch orders with real-time updates
-  useEffect(() => {
-    if (!supplierData?.id) {
-      return;
-    }
+  const fetchSupplierOrders = useCallback(async () => {
+    if (!supplierData?.id) return;
 
-    const fetchSupplierOrders = async () => {
-      try {
-        console.log('Fetching orders for supplier:', supplierData.id);
+    try {
+      console.log('Fetching orders for supplier:', supplierData.id);
 
-        const relevantOrders = await orderService.getOrdersBySupplierId(supplierData.id);
-        console.log('Supplier orders response:', relevantOrders);
-        console.log('Total orders found:', relevantOrders.length || 0);
-        if (relevantOrders.length > 0) {
-          console.log('First order items:', relevantOrders[0].items);
-          if (relevantOrders[0].items && relevantOrders[0].items.length > 0) {
-            console.log('First item product:', relevantOrders[0].items[0].product);
-          }
+      const relevantOrders = await orderService.getOrdersBySupplierId(supplierData.id);
+      console.log('Supplier orders response:', relevantOrders);
+      console.log('Total orders found:', relevantOrders.length || 0);
+      if (relevantOrders.length > 0) {
+        console.log('First order items:', relevantOrders[0].items);
+        if (relevantOrders[0].items && relevantOrders[0].items.length > 0) {
+          console.log('First item product:', relevantOrders[0].items[0].product);
         }
-
-        // Extract all product IDs from all orders
-        const allProductIds = new Set<string>();
-        relevantOrders.forEach((order: any) => {
-          if (order.items) {
-            order.items.forEach((item: any) => {
-              // Handle both array and object format for product (though now it will be just ID in item, we need to be careful)
-              // Since we removed the join, item.product might be missing or just an ID if we didn't select it.
-              // Actually, order_items table has product_id.
-              if (item.product_id) allProductIds.add(item.product_id);
-            });
-          }
-        });
-
-        // Fetch product details manually
-        let productsMap: Record<string, any> = {};
-        if (allProductIds.size > 0) {
-          const { data: productsData } = await supabase
-            .from('products')
-            .select('id, name, image_url')
-            .in('id', Array.from(allProductIds));
-
-          if (productsData) {
-            productsMap = productsData.reduce((acc, p) => ({ ...acc, [p.id]: p }), {});
-          }
-        }
-
-        const transformedOrders = relevantOrders.map((order: any) => {
-          // Attach product details to items
-          const itemsWithProducts = order.items?.map((item: any) => ({
-            ...item,
-            product: productsMap[item.product_id] || { name: 'Unknown Product', image_url: null }
-          })) || [];
-
-          // Use the first item's product name or a generic label
-          const firstItem = itemsWithProducts[0];
-          const productName = itemsWithProducts.length > 0
-            ? (firstItem.product?.name || 'Product')
-            : 'No Items Data';
-
-          return {
-            id: order.id,
-            product: productName,
-            image: firstItem?.product?.image_url || null,
-            items: itemsWithProducts,
-            type: order.order_type || 'individual',
-            vendors: 1,
-            // Map DB status to UI status
-            status: order.status === 'ready_for_pickup' ? 'Ready to Ship' :
-              order.status === 'out_for_delivery' ? 'Out for Delivery' :
-                order.status === 'delivered' ? 'Delivered' :
-                  order.status === 'confirmed' ? 'Processing' :
-                    order.status === 'pending' ? 'Pending' : order.status,
-            value: `₹${order.total_amount}`,
-            quantity: order.items ? `${order.items.reduce((acc: number, item: any) => acc + item.quantity, 0)} units` : '0 units',
-            deliveryDate: order.delivery_date ? new Date(order.delivery_date).toLocaleString('en-US', {
-              month: 'short',
-              day: 'numeric',
-              hour: 'numeric',
-              minute: 'numeric',
-              hour12: true
-            }) : 'TBD',
-            customerName: 'Customer',
-            customerPhone: '',
-            paymentMethod: 'online',
-            createdAt: order.created_at
-          };
-        });
-
-        // Fetch reviews for all orders in one go
-        const orderIds = transformedOrders.map((o: any) => o.id);
-        let reviewsMap: Record<string, any> = {};
-
-        if (orderIds.length > 0) {
-          try {
-            const reviews = await reviewService.getReviewsByOrderIds(orderIds);
-            if (reviews) {
-              reviewsMap = reviews.reduce((acc: any, review: any) => {
-                acc[review.order_id] = review;
-                return acc;
-              }, {});
-            }
-          } catch (reviewError) {
-            console.error('Error fetching reviews:', reviewError);
-          }
-        }
-
-        const ordersWithReviews = transformedOrders.map((order: any) => {
-          const review = reviewsMap[order.id];
-          return {
-            ...order,
-            review: review
-          };
-        });
-
-        // Separate orders if needed, or put all in confirmedOrders for the dashboard view
-        // The UI seems to have "Individual Orders" and "Confirmed Orders" tabs.
-        // For now, let's populate confirmedOrders as that's where the action buttons are.
-        setConfirmedOrders(ordersWithReviews);
-
-
-      } catch (error) {
-        console.error('Error fetching supplier orders:', error);
-        toast({
-          title: "Error",
-          description: "Failed to load orders. Please refresh the page.",
-          variant: "destructive"
-        });
       }
-    };
 
+      // Extract all product IDs from all orders
+      const allProductIds = new Set<string>();
+      relevantOrders.forEach((order: any) => {
+        if (order.items) {
+          order.items.forEach((item: any) => {
+            // Handle both array and object format for product (though now it will be just ID in item, we need to be careful)
+            // Since we removed the join, item.product might be missing or just an ID if we didn't select it.
+            // Actually, order_items table has product_id.
+            if (item.product_id) allProductIds.add(item.product_id);
+          });
+        }
+      });
+
+      // Fetch product details manually
+      let productsMap: Record<string, any> = {};
+      if (allProductIds.size > 0) {
+        const { data: productsData } = await supabase
+          .from('products')
+          .select('id, name, image_url')
+          .in('id', Array.from(allProductIds));
+
+        if (productsData) {
+          productsMap = productsData.reduce((acc, p) => ({ ...acc, [p.id]: p }), {});
+        }
+      }
+
+      const transformedOrders = relevantOrders.map((order: any) => {
+        // Attach product details to items
+        const itemsWithProducts = order.items?.map((item: any) => ({
+          ...item,
+          product: productsMap[item.product_id] || { name: 'Unknown Product', image_url: null }
+        })) || [];
+
+        // Use the first item's product name or a generic label
+        const firstItem = itemsWithProducts[0];
+        const productName = itemsWithProducts.length > 0
+          ? (firstItem.product?.name || 'Product')
+          : 'No Items Data';
+
+        return {
+          id: order.id,
+          product: productName,
+          image: firstItem?.product?.image_url || null,
+          items: itemsWithProducts,
+          type: order.order_type || 'individual',
+          vendors: 1,
+          // Map DB status to UI status
+          status: order.status === 'ready_for_pickup' ? 'Ready to Ship' :
+            order.status === 'out_for_delivery' ? 'Out for Delivery' :
+              order.status === 'delivered' ? 'Delivered' :
+                order.status === 'confirmed' ? 'Processing' :
+                  order.status === 'pending' ? 'Pending' : order.status,
+          value: `₹${order.total_amount}`,
+          quantity: order.items ? `${order.items.reduce((acc: number, item: any) => acc + item.quantity, 0)} units` : '0 units',
+          deliveryDate: order.delivery_date ? new Date(order.delivery_date).toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: 'numeric',
+            hour12: true
+          }) : 'TBD',
+          customerName: 'Customer',
+          customerPhone: '',
+          paymentMethod: 'online',
+          createdAt: order.created_at
+        };
+      });
+
+      // Fetch reviews for all orders in one go
+      const orderIds = transformedOrders.map((o: any) => o.id);
+      let reviewsMap: Record<string, any> = {};
+
+      if (orderIds.length > 0) {
+        try {
+          const reviews = await reviewService.getReviewsByOrderIds(orderIds);
+          if (reviews) {
+            reviewsMap = reviews.reduce((acc: any, review: any) => {
+              acc[review.order_id] = review;
+              return acc;
+            }, {});
+          }
+        } catch (reviewError) {
+          console.error('Error fetching reviews:', reviewError);
+        }
+      }
+
+      const ordersWithReviews = transformedOrders.map((order: any) => {
+        const review = reviewsMap[order.id];
+        return {
+          ...order,
+          review: review
+        };
+      });
+
+      // Separate orders if needed, or put all in confirmedOrders for the dashboard view
+      // The UI seems to have "Individual Orders" and "Confirmed Orders" tabs.
+      // For now, let's populate confirmedOrders as that's where the action buttons are.
+      setConfirmedOrders(ordersWithReviews);
+
+
+    } catch (error) {
+      console.error('Error fetching supplier orders:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load orders. Please refresh the page.",
+        variant: "destructive"
+      });
+    }
+  }, [supplierData, toast]);
+
+  useEffect(() => {
     fetchSupplierOrders();
+
+    if (!supplierData?.id) return;
 
     const subscription = supabase
       .channel('orders_changes')
@@ -663,7 +663,7 @@ const SupplierDashboard = () => {
     return () => {
       subscription.unsubscribe();
     };
-  }, [supplierData, toast]);
+  }, [fetchSupplierOrders, supplierData?.id]);
 
   // --- NEW HELPER FUNCTIONS FOR UPDATE/DELETE ---
 
