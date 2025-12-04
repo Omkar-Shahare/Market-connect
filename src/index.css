@@ -17,11 +17,13 @@ All colors MUST be HSL.
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
 
-    --primary: 210 100% 45%;
+    --primary: 220 85% 42%;
+    /* Deep Royal Blue */
     --primary-foreground: 0 0% 100%;
-    --primary-glow: 210 100% 60%;
+    --primary-glow: 220 85% 65%;
 
-    --secondary: 142 76% 36%;
+    --secondary: 155 75% 32%;
+    /* Emerald Green */
     --secondary-foreground: 0 0% 100%;
 
     --muted: 210 40% 96.1%;
@@ -35,20 +37,25 @@ All colors MUST be HSL.
 
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 210 100% 45%;
+    --ring: 220 85% 42%;
 
-    --vendor: 260 100% 65%;
+    --vendor: 265 85% 60%;
+    /* Rich Purple */
     --vendor-foreground: 0 0% 100%;
-    --supplier: 142 76% 36%;
+    --supplier: 155 75% 32%;
+    /* Emerald Green */
     --supplier-foreground: 0 0% 100%;
+    --delivery: 25 95% 53%;
+    /* Orange */
 
     --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-glow)));
-    --gradient-vendor: linear-gradient(135deg, hsl(var(--vendor)), hsl(260 100% 75%));
-    --gradient-supplier: linear-gradient(135deg, hsl(var(--supplier)), hsl(142 76% 50%));
-    --gradient-hero: linear-gradient(135deg, hsl(210 100% 45%), hsl(142 76% 36%));
+    --gradient-vendor: linear-gradient(135deg, hsl(var(--vendor)), hsl(265 85% 75%));
+    --gradient-supplier: linear-gradient(135deg, hsl(var(--supplier)), hsl(155 75% 45%));
+    --gradient-delivery: linear-gradient(135deg, hsl(25 95% 53%), hsl(35 95% 60%));
+    --gradient-hero: linear-gradient(135deg, hsl(220 85% 42%), hsl(155 75% 32%));
 
-    --shadow-elegant: 0 10px 30px -10px hsl(var(--primary) / 0.2);
-    --shadow-glow: 0 0 40px hsl(var(--primary-glow) / 0.3);
+    --shadow-elegant: 0 20px 40px -15px hsl(var(--primary) / 0.15);
+    --shadow-glow: 0 0 50px hsl(var(--primary-glow) / 0.25);
 
     --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 

@@ -58,5 +58,18 @@ export const reviewService = {
 
         if (error) throw error;
         return data;
+    },
+
+    // Get reviews for multiple orders (batch fetch)
+    async getReviewsByOrderIds(orderIds: string[]) {
+        if (orderIds.length === 0) return [];
+
+        const { data, error } = await supabase
+            .from('reviews')
+            .select('*')
+            .in('order_id', orderIds);
+
+        if (error) throw error;
+        return data;
     }
 };

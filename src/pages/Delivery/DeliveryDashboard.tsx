@@ -42,8 +42,8 @@ const DELIVERY_JOB_QUERY = `
   created_at,
   status,
   order_number, 
-  supplier:suppliers(business_name, phone, address, city, state),
-  vendor:vendors(business_name, owner_name, phone, address, city, state),
+  supplier_id,
+  vendor_id,
   order_items(quantity, product:products(name, unit))
 `;
 
@@ -84,15 +84,57 @@ const DeliveryDashboard: React.FC = () => {
           .from('orders')
           .select(DELIVERY_JOB_QUERY)
           .eq('status', 'out_for_delivery') // <-- New Status
-          .eq('delivery_partner_id', partnerData.id) // Use correct ID
+          .eq('delivery_partner_id', (partnerData as any).id) // Use correct ID
           .order('created_at', { ascending: true });
 
         if (deliveryError) throw deliveryError;
         deliveryData = deliveryOrders || [];
       }
 
-      setPickupJobs(pickupData as unknown as DeliveryJob[]);
-      setDeliveryJobs(deliveryData as unknown as DeliveryJob[]);
+      // Combine all orders to fetch related data
+      const allOrders = [...(pickupData || []), ...deliveryData];
+
+      // Extract unique IDs
+      const supplierIds = [...new Set(allOrders.map((o: any) => o.supplier_id).filter(Boolean))];
+      const vendorIds = [...new Set(allOrders.map((o: any) => o.vendor_id).filter(Boolean))];
+
+      // Fetch Suppliers
+      let suppliersMap: Record<string, any> = {};
+      if (supplierIds.length > 0) {
+        const { data: suppliers } = await supabase
+          .from('suppliers')
+          .select('id, business_name, phone, address, city, state')
+          .in('id', supplierIds);
+
+        if (suppliers) {
+          suppliersMap = suppliers.reduce((acc, s) => ({ ...acc, [s.id]: s }), {});
+        }
+      }
+
+      // Fetch Vendors
+      let vendorsMap: Record<string, any> = {};
+      if (vendorIds.length > 0) {
+        const { data: vendors } = await supabase
+          .from('vendors')
+          .select('id, business_name, owner_name, phone, address, city, state')
+          .in('id', vendorIds);
+
+        if (vendors) {
+          vendorsMap = vendors.reduce((acc, v) => ({ ...acc, [v.id]: v }), {});
+        }
+      }
+
+      // Map data back to orders
+      const mapOrderData = (orders: any[]) => {
+        return orders.map(order => ({
+          ...order,
+          supplier: suppliersMap[order.supplier_id] || null,
+          vendor: vendorsMap[order.vendor_id] || null
+        }));
+      };
+
+      setPickupJobs(mapOrderData(pickupData || []) as unknown as DeliveryJob[]);
+      setDeliveryJobs(mapOrderData(deliveryData) as unknown as DeliveryJob[]);
 
     } catch (error: any) {
       toast.error("Failed to fetch jobs", { description: error.message });
@@ -148,11 +190,11 @@ const DeliveryDashboard: React.FC = () => {
       if (partnerError) throw new Error("Could not find delivery partner profile");
       if (!partnerData) throw new Error("Delivery partner profile not found");
 
-      const { error } = await supabase
-        .from('orders')
+      const { error } = await (supabase
+        .from('orders') as any)
         .update({
           status: 'out_for_delivery',
-          delivery_partner_id: partnerData.id, // Use the correct ID from the table
+          delivery_partner_id: (partnerData as any).id,
         })
         .eq('id', orderId);
 
@@ -168,10 +210,11 @@ const DeliveryDashboard: React.FC = () => {
   // 6. Handler to "Mark as Delivered"
   const handleMarkAsDelivered = async (orderId: string) => {
     try {
-      const { error } = await supabase
-        .from('orders')
+      const { error } = await (supabase
+        .from('orders') as any)
         .update({
           status: 'delivered',
+          delivery_date: new Date().toISOString(),
         })
         .eq('id', orderId);
 
@@ -280,22 +323,10 @@ const DeliveryDashboard: React.FC = () => {
   // 9. Main component render
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
-      {/* <Navbar /> */}
-      {/* Basic header similar to your design */}
-      <header className="bg-white shadow-sm p-4 flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-gray-800">Market Connect Delivery</h1>
-        <div>
-          <span className="text-sm font-medium bg-purple-100 text-purple-700 px-3 py-1 rounded-full mr-4">
-            Delivery Team
-          </span>
-          <span className="text-sm text-gray-600 mr-4">{user?.email}</span>
-          <Button variant="outline" size="sm" onClick={() => supabase.auth.signOut()}>
-            Logout
-          </Button>
-        </div>
-      </header>
+      <Navbar />
+      {/* Standard Navbar used instead of custom header */}
 
-      <main className="flex-grow container mx-auto p-4 md:p-8">
+      <main className="flex-grow container mx-auto p-4 md:p-8 pt-24">
         <h2 className="text-3xl font-bold text-gray-900 mb-2">Delivery Dashboard</h2>
         <p className="text-lg text-gray-600 mb-6">Manage your delivery orders</p>
 

@@ -52,13 +52,7 @@ export const productService = {
     const { data, error } = await supabase
       .from('products')
       .select(`
-        *,
-        supplier:suppliers(
-          id,
-          business_name,
-          city,
-          rating
-        )
+        *
       `)
       .eq('stock_available', true)
       .order('name', { ascending: true });

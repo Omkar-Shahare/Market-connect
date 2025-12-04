@@ -28,12 +28,17 @@ import { reviewService } from "@/services/supabaseReview";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { useTranslation } from 'react-i18next';
+import SupplierRecommendations from "@/components/vendor/SupplierRecommendations";
+import StarRating from "@/components/StarRating";
 
 const VendorDashboard = () => {
+  const { t } = useTranslation();
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("dashboard");
   const [groupSearch, setGroupSearch] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("All Categories");
   const [supplierSearch, setSupplierSearch] = useState("");
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState(null);
@@ -296,21 +301,95 @@ const VendorDashboard = () => {
       const orders = await orderService.getOrdersByVendorId(vendorProfile.id);
       console.log('Vendor orders response:', orders);
 
+      // Extract unique supplier IDs
+      const supplierIds = [...new Set(orders.map((o: any) => o.supplier_id).filter(Boolean))];
+
+      // Fetch suppliers manually to avoid join issues
+      let suppliersMap: Record<string, any> = {};
+      if (supplierIds.length > 0) {
+        const { data: suppliersData, error: suppliersError } = await supabase
+          .from('suppliers')
+          .select('*')
+          .in('id', supplierIds);
+
+        if (!suppliersError && suppliersData) {
+          suppliersMap = suppliersData.reduce((acc: any, supplier: any) => {
+            acc[supplier.id] = supplier;
+            return acc;
+          }, {});
+        } else {
+          console.error('Error fetching suppliers:', suppliersError);
+        }
+      }
+
+      // Fetch reviews for all orders in one go
+      const orderIds = orders.map((o: any) => o.id);
+      let reviewsMap: Record<string, any> = {};
+
+      if (orderIds.length > 0) {
+        try {
+          const reviews = await reviewService.getReviewsByOrderIds(orderIds);
+          if (reviews) {
+            reviewsMap = reviews.reduce((acc: any, review: any) => {
+              acc[review.order_id] = review;
+              return acc;
+            }, {});
+          }
+        } catch (reviewError) {
+          console.error('Error fetching reviews:', reviewError);
+        }
+      }
+
+      // Extract all product IDs from all orders
+      const allProductIds = new Set<string>();
+      orders.forEach((order: any) => {
+        if (order.items) {
+          order.items.forEach((item: any) => {
+            if (item.product_id) allProductIds.add(item.product_id);
+          });
+        }
+      });
+
+      // Fetch product details manually
+      let productsMap: Record<string, any> = {};
+      if (allProductIds.size > 0) {
+        const { data: productsData } = await supabase
+          .from('products')
+          .select('id, name, image_url')
+          .in('id', Array.from(allProductIds));
+
+        if (productsData) {
+          productsMap = productsData.reduce((acc, p) => ({ ...acc, [p.id]: p }), {});
+        }
+      }
+
       // Parse JSON fields if needed, but Supabase returns items as object array now
-      const ordersWithParsedData = await Promise.all(orders.map(async (order: any) => {
-        // Check if order has review
-        const review = await reviewService.getReviewByOrderId(order.id);
+      const ordersWithParsedData = orders.map((order: any) => {
+        const review = reviewsMap[order.id];
+
+        // Attach product details to items
+        const itemsWithProducts = order.items?.map((item: any) => ({
+          ...item,
+          product: productsMap[item.product_id] || { name: 'Unknown Product', image_url: null }
+        })) || [];
+
+        const firstItem = itemsWithProducts[0];
+
+        // Attach supplier manually
+        const supplier = suppliersMap[order.supplier_id] || { business_name: 'Unknown Supplier', phone: '' };
 
         return {
           ...order,
-          items: order.items, // Already an array from Supabase join
-          image: order.items && order.items.length > 0 ? order.items[0].product?.image_url : null,
+          supplier: supplier, // Attach the fetched supplier
+          items: itemsWithProducts,
+          image: firstItem?.product?.image_url || null,
+          productName: firstItem?.product?.name || 'Unknown Product',
           customer_details: order.customer_details ?
             (typeof order.customer_details === 'string' ? JSON.parse(order.customer_details) : order.customer_details)
             : null,
           has_review: !!review
         };
-      }));
+      });
 
       setVendorOrders(ordersWithParsedData);
     } catch (error) {
@@ -1000,7 +1079,14 @@ const VendorDashboard = () => {
       const matchesSearch = supplier.product.toLowerCase().includes(supplierSearch.toLowerCase()) ||
         supplier.name.toLowerCase().includes(supplierSearch.toLowerCase());
 
+
+
       if (!matchesSearch) return false;
+
+      // Apply category filter
+      if (selectedCategory !== "All Categories" && supplier.category !== selectedCategory) {
+        return false;
+      }
 
       // Apply location filter
       if (supplierLocationFilter === "nearby" && currentLocation) {
@@ -1142,7 +1228,11 @@ const VendorDashboard = () => {
       supplier: group.supplier || "Supplier",
       created_by: group.created_by, // 🔧 CRITICAL: Adding created_by field
       deliveryAddress: group.location || "",
+      deliveryAddress: group.location || "",
       image: group.image || "",
+      rating: group.rating || 0,
+      rating: group.rating || 0,
+      category: group.category || "Vegetables",
       otherGroupProducts: [],
     };
     console.log('✅ Mapped group data:', mappedData);
@@ -1164,9 +1254,14 @@ const VendorDashboard = () => {
       longitude: parseFloat(group.longitude) || 72.8777,
       verified: true,
       memberYears: 3,
-      rating: 4.5,
+      verified: true,
+      memberYears: 3,
+      rating: group.rating || 4.5, // Use real rating or fallback
+      deliveryRadius: 25, // Default delivery radius
       deliveryRadius: 25, // Default delivery radius
       deliveryCharge: 50, // Default delivery charge
+      deliveryCharge: 50, // Default delivery charge
+      category: group.category || "Vegetables",
       otherProducts: [], // Will be populated if needed
       groupData: group // Store original group data for reference
     }));
@@ -1181,6 +1276,25 @@ const VendorDashboard = () => {
         const products = await productService.getProductsWithSupplier();
         console.log('📥 Raw products from Supabase:', products);
 
+        // Extract unique supplier IDs
+        const supplierIds = [...new Set(products.map(p => p.supplier_id).filter(Boolean))];
+
+        // Fetch suppliers manually
+        let suppliersMap: Record<string, any> = {};
+        if (supplierIds.length > 0) {
+          const { data: suppliersData, error: suppliersError } = await supabase
+            .from('suppliers')
+            .select('id, business_name, rating, city')
+            .in('id', supplierIds);
+
+          if (!suppliersError && suppliersData) {
+            suppliersMap = suppliersData.reduce((acc: any, supplier: any) => {
+              acc[supplier.id] = supplier;
+              return acc;
+            }, {});
+          }
+        }
+
         // Map Supabase products to the expected group format
         const groups = products.map(p => {
           let details: any = {};
@@ -1189,6 +1303,8 @@ const VendorDashboard = () => {
           } catch (e) {
             console.log('Error parsing description JSON', e);
           }
+
+          const supplier = suppliersMap[p.supplier_id] || {};
 
           return {
             id: p.id,
@@ -1205,7 +1321,9 @@ const VendorDashboard = () => {
             image: p.image_url,
             created_by: p.supplier_id,
             // Use the fetched supplier business name, fallback to "Supplier" if missing
-            supplier: p.supplier?.business_name || "Supplier",
+            supplier: supplier.business_name || "Supplier",
+            rating: supplier.rating,
+            category: p.category,
             status: 'active'
           };
         });
@@ -1411,19 +1529,19 @@ const VendorDashboard = () => {
               {/* Orders Tabs */}
               <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
                 <TabsList className="grid w-full grid-cols-4 lg:w-[600px]">
-                  <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
-                  <TabsTrigger value="group">Group Orders</TabsTrigger>
-                  <TabsTrigger value="suppliers">Suppliers</TabsTrigger>
-                  <TabsTrigger value="orders">My Orders</TabsTrigger>
+                  <TabsTrigger value="dashboard">{t('dashboard')}</TabsTrigger>
+                  <TabsTrigger value="group">{t('group_orders')}</TabsTrigger>
+                  <TabsTrigger value="suppliers">{t('suppliers')}</TabsTrigger>
+                  <TabsTrigger value="orders">{t('my_orders')}</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="suppliers" className="space-y-4">
                   <div className="bg-blue-500 text-white rounded-lg p-6 mb-6">
-                    <h2 className="text-2xl font-bold mb-2">Find Suppliers</h2>
-                    <p className="text-blue-100 mb-4">Search and filter suppliers based on your needs</p>
+                    <h2 className="text-2xl font-bold mb-2">{t('find_suppliers')}</h2>
+                    <p className="text-blue-100 mb-4">{t('search_filter_suppliers')}</p>
                     <div className="bg-blue-400 rounded-lg p-3 mt-4">
                       <p className="text-sm">
-                        <strong>Note:</strong> Individual purchases show original prices (no group discounts applied)
+                        <strong>{t('note')}</strong> {t('individual_purchases_note')}
                       </p>
                     </div>
                   </div>
@@ -1436,7 +1554,7 @@ const VendorDashboard = () => {
                         <div>
                           {currentLocation ? (
                             <div>
-                              <span className="text-sm font-medium text-blue-600">📍 Your Location:</span>
+                              <span className="text-sm font-medium text-blue-600">📍 {t('your_location')}</span>
                               <div className="mt-1">
                                 <span className="text-sm text-gray-700 font-medium">{currentLocation.name}</span>
                                 {currentLocation.accuracy && (
@@ -1448,7 +1566,7 @@ const VendorDashboard = () => {
                             </div>
                           ) : (
                             <span className="text-sm text-gray-500">
-                              {isDetectingLocation ? "🔍 Detecting location for delivery..." : "📍 Set location for delivery estimates"}
+                              {isDetectingLocation ? `🔍 ${t('detecting_location')}` : `📍 ${t('set_location')}`}
                             </span>
                           )}
                         </div>
@@ -1464,7 +1582,7 @@ const VendorDashboard = () => {
                             className="flex items-center gap-2"
                           >
                             <Navigation className="w-4 h-4" />
-                            {isDetectingLocation ? "Detecting..." : "Set My Location"}
+                            {isDetectingLocation ? t('detecting') : t('set_my_location')}
                           </Button>
                         )}
 
@@ -1477,19 +1595,26 @@ const VendorDashboard = () => {
                             className="flex items-center gap-2"
                           >
                             <Navigation className="w-4 h-4" />
-                            {isDetectingLocation ? "Updating..." : "Update Location"}
+                            {isDetectingLocation ? t('updating') : t('update_location')}
                           </Button>
                         )}
                       </div>
                     </div>
                   </div>
 
+                  {/* Smart Supplier Recommendations */}
+                  <SupplierRecommendations
+                    suppliers={individualSuppliers}
+                    currentLocation={currentLocation}
+                    onSelectSupplier={handleOrderNow}
+                  />
+
                   {/* Search and Filter Controls for Suppliers */}
                   <div className="flex gap-4 items-center flex-wrap mb-6">
                     <div className="relative flex-1 min-w-[300px]">
                       <input
                         type="text"
-                        placeholder="Search for materials, suppliers..."
+                        placeholder={t('search_placeholder')}
                         value={supplierSearch}
                         onChange={e => setSupplierSearch(e.target.value)}
                         className="w-full pl-10 pr-4 py-3 border border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 text-gray-900 bg-white"
@@ -1498,23 +1623,38 @@ const VendorDashboard = () => {
                     </div>
 
                     <select
+                      value={selectedCategory}
+                      onChange={(e) => setSelectedCategory(e.target.value)}
+                      className="px-3 py-3 border border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300"
+                    >
+                      <option value="All Categories">All Categories</option>
+                      <option value="Vegetables">Vegetables</option>
+                      <option value="Fruits">Fruits</option>
+                      <option value="Dairy">Dairy</option>
+                      <option value="Grains">Grains</option>
+                      <option value="Spices">Spices</option>
+                      <option value="Beverages">Beverages</option>
+                      <option value="Others">Others</option>
+                    </select>
+
+                    <select
                       value={supplierLocationFilter}
                       onChange={(e) => setSupplierLocationFilter(e.target.value)}
                       className="px-3 py-3 border border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300"
                     >
-                      <option value="all">All Suppliers</option>
+                      <option value="all">{t('all_suppliers')}</option>
                       <option value="nearby" disabled={!currentLocation}>
-                        {currentLocation ? `Within ${supplierRadius}km` : "Nearby (location required)"}
+                        {currentLocation ? t('within_km', { radius: supplierRadius }) : t('nearby_location_required')}
                       </option>
                       <option value="delivery" disabled={!currentLocation}>
-                        {currentLocation ? "Available for Delivery" : "Delivery (location required)"}
+                        {currentLocation ? t('available_delivery') : t('delivery_location_required')}
                       </option>
                     </select>
 
                     {(supplierLocationFilter === "nearby" || supplierLocationFilter === "delivery") && currentLocation && (
                       <div className="flex items-center gap-2">
                         <span className="text-sm text-gray-600">
-                          {supplierLocationFilter === "nearby" ? "Search Radius:" : "Max Distance:"}
+                          {supplierLocationFilter === "nearby" ? t('search_radius') : t('max_distance')}
                         </span>
                         <input
                           type="range"
@@ -1541,7 +1681,7 @@ const VendorDashboard = () => {
                           <div className="text-gray-600 text-sm">{supplier.name}</div>
                           <div className="flex items-center text-xs text-gray-500 mt-1 mb-2">
                             <span>{supplier.location}</span>
-                            {supplier.verified && <span className="ml-2 bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs">Verified</span>}
+                            {supplier.verified && <span className="ml-2 bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs">{t('verified')}</span>}
                           </div>
 
                           {/* Location and Delivery Info */}
@@ -1557,11 +1697,11 @@ const VendorDashboard = () => {
                                 {inDeliveryRange ? (
                                   <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded flex items-center gap-1">
                                     <Truck className="w-3 h-3" />
-                                    Delivers (₹{supplier.deliveryCharge})
+                                    {t('delivers')} (₹{supplier.deliveryCharge})
                                   </span>
                                 ) : (
                                   <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded text-xs">
-                                    Outside delivery area
+                                    {t('outside_delivery_area')}
                                   </span>
                                 )}
                               </div>
@@ -1570,8 +1710,10 @@ const VendorDashboard = () => {
 
                           <div className="text-blue-600 font-bold text-lg mb-1">{supplier.price}</div>
                           <div className="flex items-center text-xs text-gray-500 mb-3">
-                            <span>Member: {supplier.memberYears} yrs</span>
-                            <span className="ml-2">⭐ {supplier.rating}</span>
+                            <span>{t('member_years', { years: supplier.memberYears })}</span>
+                            <div className="ml-2 scale-90 origin-left">
+                              <StarRating rating={supplier.rating} showCount={true} />
+                            </div>
                           </div>
                           <button
                             className={`w-full py-2 rounded-lg font-medium transition-colors ${currentLocation && !inDeliveryRange
@@ -1581,7 +1723,7 @@ const VendorDashboard = () => {
                             onClick={() => handleOrderNow(supplier)}
                             disabled={currentLocation && !inDeliveryRange}
                           >
-                            {currentLocation && !inDeliveryRange ? 'No Delivery' : 'Order Now'}
+                            {currentLocation && !inDeliveryRange ? t('no_delivery') : t('order_now')}
                           </button>
                         </div>
                       );
@@ -1591,10 +1733,10 @@ const VendorDashboard = () => {
                   {getFilteredSuppliers().length === 0 && (
                     <div className="text-center py-12">
                       <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                      <h3 className="text-lg font-semibold text-gray-600 mb-2">No Suppliers Found</h3>
+                      <h3 className="text-lg font-semibold text-gray-600 mb-2">{t('no_suppliers_found')}</h3>
                       <p className="text-gray-500 mb-4">
                         {supplierLocationFilter === "nearby" && !currentLocation
-                          ? "Enable location detection to find nearby suppliers."
+                          ? t('enable_location_detection')
                           : supplierLocationFilter === "delivery" && !currentLocation
                             ? "Set your location to see suppliers that deliver to you."
                             : supplierSearch
@@ -1627,11 +1769,11 @@ const VendorDashboard = () => {
 
                 <TabsContent value="group" className="space-y-4">
                   <div className="bg-green-500 text-white rounded-lg p-6 mb-6">
-                    <h2 className="text-2xl font-bold mb-2">Group Orders</h2>
-                    <p className="text-green-100 mb-4">Join group orders for bulk discounts</p>
+                    <h2 className="text-2xl font-bold mb-2">{t('group_orders')}</h2>
+                    <p className="text-green-100 mb-4">{t('join_group_orders_desc')}</p>
                     <div className="bg-green-400 rounded-lg p-3 mt-4">
                       <p className="text-sm">
-                        <strong>Note:</strong> Group orders show discounted prices (final rates with bulk discounts)
+                        <strong>{t('note')}</strong> {t('group_orders_note')}
                       </p>
                     </div>
                   </div>
@@ -1646,7 +1788,7 @@ const VendorDashboard = () => {
                           <div>
                             {currentLocation ? (
                               <div>
-                                <span className="text-sm font-medium text-green-600">📍 Location detected:</span>
+                                <span className="text-sm font-medium text-green-600">📍 {t('location_detected')}</span>
                                 <div className="mt-1">
                                   <span className="text-sm text-gray-700 font-medium">{currentLocation.name}</span>
                                   {currentLocation.accuracy && (
@@ -1658,7 +1800,7 @@ const VendorDashboard = () => {
                               </div>
                             ) : (
                               <span className="text-sm text-gray-500">
-                                {isDetectingLocation ? "🔍 Detecting precise location..." : "📍 Location not detected"}
+                                {isDetectingLocation ? `🔍 ${t('detecting_precise_location')}` : `📍 ${t('location_not_detected')}`}
                               </span>
                             )}
                           </div>
@@ -1674,7 +1816,7 @@ const VendorDashboard = () => {
                               className="flex items-center gap-2"
                             >
                               <Navigation className="w-4 h-4" />
-                              {isDetectingLocation ? "Detecting..." : "Detect Location"}
+                              {isDetectingLocation ? t('detecting') : t('detect_location')}
                             </Button>
                           )}
 
@@ -1687,7 +1829,7 @@ const VendorDashboard = () => {
                               className="flex items-center gap-2"
                             >
                               <Navigation className="w-4 h-4" />
-                              {isDetectingLocation ? "Updating..." : "Update Location"}
+                              {isDetectingLocation ? t('updating') : t('update_location')}
                             </Button>
                           )}
 
@@ -1698,7 +1840,7 @@ const VendorDashboard = () => {
                             className="flex items-center gap-2"
                           >
                             <Target className="w-4 h-4" />
-                            Location Settings
+                            {t('location_settings')}
                           </Button>
                         </div>
                       </div>
@@ -1709,7 +1851,7 @@ const VendorDashboard = () => {
                       <div className="relative flex-1 min-w-[300px]">
                         <input
                           type="text"
-                          placeholder="Search product groups..."
+                          placeholder={t('search_product_groups')}
                           value={groupSearch}
                           onChange={e => setGroupSearch(e.target.value)}
                           className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
@@ -1722,15 +1864,15 @@ const VendorDashboard = () => {
                         onChange={(e) => setLocationFilter(e.target.value)}
                         className="px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
                       >
-                        <option value="all">All Locations</option>
+                        <option value="all">{t('all_locations')}</option>
                         <option value="nearby" disabled={!currentLocation}>
-                          {currentLocation ? `Within ${customLocationRadius}km` : "Nearby (location required)"}
+                          {currentLocation ? t('within_km', { radius: customLocationRadius }) : t('nearby_location_required')}
                         </option>
                       </select>
 
                       {locationFilter === "nearby" && currentLocation && (
                         <div className="flex items-center gap-2">
-                          <span className="text-sm text-gray-600">Radius:</span>
+                          <span className="text-sm text-gray-600">{t('radius')}</span>
                           <input
                             type="range"
                             min="1"
@@ -1763,11 +1905,11 @@ const VendorDashboard = () => {
                               </div>
                             </div>
                             <div className="font-semibold text-lg text-gray-900">{order.product}</div>
-                            <div className="text-gray-600 text-sm">by {order.supplier}</div>
+                            <div className="text-gray-600 text-sm">{t('by_supplier', { supplier: order.supplier })}</div>
                             <div className="flex items-center text-xs text-gray-500 mt-1 mb-2">
-                              <span>{order.participants} members</span>
+                              <span>{t('members', { count: order.participants })}</span>
                               <span className="ml-2 bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs">
-                                {order.discountPercentage || order.discount || '15%'} OFF
+                                {order.discountPercentage || order.discount || '15%'} {t('off')}
                               </span>
                             </div>
 
@@ -1791,14 +1933,14 @@ const VendorDashboard = () => {
                                 <div className="text-xs text-gray-500">
                                   <span className="line-through">₹{order.actualRate}/kg</span>
                                   <span className="ml-2 text-green-600 font-medium">
-                                    Final: ₹{order.finalRate}/kg
+                                    {t('final_price')} ₹{order.finalRate}/kg
                                   </span>
                                 </div>
                               )}
                             </div>
                             <div className="flex items-center text-xs text-gray-500 mb-3">
-                              <span>Target: {order.targetQty}</span>
-                              <span className="ml-2">Current: {order.currentQty}</span>
+                              <span>{t('target_qty')} {order.targetQty}</span>
+                              <span className="ml-2">{t('current_qty')} {order.currentQty}</span>
                             </div>
                             <div className="w-full h-2 bg-gray-200 rounded overflow-hidden mb-3">
                               <div className="h-2 bg-green-500 transition-all duration-300" style={{ width: `${progress}%` }} />
@@ -1807,7 +1949,7 @@ const VendorDashboard = () => {
                               className="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg font-medium transition-colors"
                               onClick={() => handleJoinGroup(order)}
                             >
-                              Join Group
+                              {t('join_group')}
                             </button>
                           </div>
                         );
@@ -1817,13 +1959,13 @@ const VendorDashboard = () => {
                     {getFilteredGroupOrders().length === 0 && (
                       <div className="text-center py-12">
                         <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                        <h3 className="text-lg font-semibold text-gray-600 mb-2">No Groups Found</h3>
+                        <h3 className="text-lg font-semibold text-gray-600 mb-2">{t('no_groups_found')}</h3>
                         <p className="text-gray-500 mb-4">
                           {locationFilter === "nearby" && !currentLocation
-                            ? "Enable location detection to find nearby groups."
+                            ? t('enable_location_detection_groups')
                             : groupSearch
-                              ? "Try adjusting your search or location filters."
-                              : "No active group orders match your criteria."}
+                              ? t('adjust_search_filters')
+                              : t('no_active_groups_match')}
                         </p>
                         {locationFilter === "nearby" && !currentLocation && (
                           <Button
@@ -1833,7 +1975,7 @@ const VendorDashboard = () => {
                             className="flex items-center gap-2 mx-auto"
                           >
                             <Navigation className="w-4 h-4" />
-                            {isDetectingLocation ? "Detecting..." : "Detect My Location"}
+                            {isDetectingLocation ? t('detecting') : t('detect_my_location')}
                           </Button>
                         )}
                       </div>
@@ -1843,21 +1985,21 @@ const VendorDashboard = () => {
 
                 <TabsContent value="orders" className="space-y-4">
                   <div className="bg-purple-500 text-white rounded-lg p-6 mb-6">
-                    <h2 className="text-2xl font-bold mb-2">My Orders</h2>
-                    <p className="text-purple-100 mb-4">Track your order history</p>
+                    <h2 className="text-2xl font-bold mb-2">{t('my_orders')}</h2>
+                    <p className="text-purple-100 mb-4">{t('track_order_history')}</p>
                   </div>
 
                   <div className="space-y-4">
                     {ordersLoading ? (
                       <div className="flex items-center justify-center py-12">
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
-                        <span className="ml-2 text-gray-600">Loading your orders...</span>
+                        <span className="ml-2 text-gray-600">{t('loading_orders')}</span>
                       </div>
                     ) : vendorOrders.length === 0 ? (
                       <div className="text-center py-12">
                         <Package className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                        <h3 className="text-lg font-semibold text-gray-600 mb-2">No Orders Yet</h3>
-                        <p className="text-gray-500">Your orders will appear here after you make a purchase.</p>
+                        <h3 className="text-lg font-semibold text-gray-600 mb-2">{t('no_orders_yet')}</h3>
+                        <p className="text-gray-500">{t('orders_appear_here')}</p>
                       </div>
                     ) : (
                       vendorOrders.map((order) => (
@@ -1877,19 +2019,22 @@ const VendorDashboard = () => {
                                 {order.items && order.items.length > 0 ? (
                                   order.items.map((item: any, idx: number) => (
                                     <div key={idx} className="font-semibold text-lg text-gray-900">
-                                      {item.product?.name || 'Unknown Product'}
+                                      {(() => {
+                                        const productData = Array.isArray(item.product) ? item.product[0] : item.product;
+                                        return productData?.name || 'Unknown Product';
+                                      })()}
                                       <span className="text-gray-600 text-sm font-normal ml-2">({item.quantity}kg)</span>
                                     </div>
                                   ))
                                 ) : (
-                                  <div className="font-semibold text-lg text-gray-900">Unknown Product</div>
+                                  <div className="font-semibold text-lg text-gray-900">{t('unknown_product')}</div>
                                 )}
                               </div>
                               <div className="text-gray-600 text-sm mb-1">
-                                Order ID: {order.id}
+                                {t('order_id')} {order.id}
                               </div>
                               <div className="text-gray-600 text-sm mb-1">
-                                Payment: {order.payment_method === 'online' ? 'Online' : 'Cash on Delivery'}
+                                {t('payment_label')} {order.payment_method === 'online' ? t('payment_online') : t('payment_cod')}
                               </div>
                               <div className="text-xs text-gray-500">
                                 {new Date(order.created_at).toLocaleDateString()}
@@ -1916,12 +2061,12 @@ const VendorDashboard = () => {
                                   className="flex items-center gap-1 text-yellow-600 border-yellow-600 hover:bg-yellow-50"
                                 >
                                   <Star className="h-4 w-4" />
-                                  Rate Supplier
+                                  {t('rate_supplier')}
                                 </Button>
                               )}
                               {order.has_review && (
                                 <Button variant="ghost" size="sm" disabled className="text-green-600">
-                                  <CheckCircle2 className="h-4 w-4 mr-1" /> Rated
+                                  <CheckCircle2 className="h-4 w-4 mr-1" /> {t('rated')}
                                 </Button>
                               )}
                               <Button
@@ -1930,12 +2075,12 @@ const VendorDashboard = () => {
                                 className="font-medium border-purple-500 text-purple-600 hover:bg-purple-50"
                                 onClick={() => {
                                   toast({
-                                    title: "Order Details",
+                                    title: t('order_details'),
                                     description: `Order ${order.id} - ${order.status}`,
                                   });
                                 }}
                               >
-                                View Details
+                                {t('view_details')}
                               </Button>
                             </div>
                           </div>
@@ -1974,28 +2119,28 @@ const VendorDashboard = () => {
             {showJoinModal && selectedGroup && (
               <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
                 <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md border">
-                  <h2 className="text-xl font-semibold mb-4">Join Group Order</h2>
+                  <h2 className="text-xl font-semibold mb-4">{t('join_group_order_title')}</h2>
                   <div className="space-y-4">
                     <div>
                       <h3 className="font-semibold text-lg">{selectedGroup.product}</h3>
-                      <p className="text-muted-foreground">by {selectedGroup.supplier}</p>
+                      <p className="text-muted-foreground">{t('by_supplier', { supplier: selectedGroup.supplier })}</p>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div>
-                        <span className="text-muted-foreground">Price:</span>
+                        <span className="text-muted-foreground">{t('price_label')}</span>
                         <div className="font-semibold">{selectedGroup.pricePerKg}</div>
                       </div>
                       <div>
-                        <span className="text-muted-foreground">Available:</span>
+                        <span className="text-muted-foreground">{t('available_label')}</span>
                         <div className="font-semibold">{selectedGroup.targetQty}</div>
                       </div>
                       <div>
-                        <span className="text-muted-foreground">Current:</span>
+                        <span className="text-muted-foreground">{t('current_label')}</span>
                         <div className="font-semibold">{selectedGroup.currentQty}</div>
                       </div>
                       <div>
-                        <span className="text-muted-foreground">Members:</span>
+                        <span className="text-muted-foreground">{t('members_label')}</span>
                         <div className="font-semibold">{selectedGroup.participants}</div>
                       </div>
                     </div>
@@ -2004,12 +2149,12 @@ const VendorDashboard = () => {
                     <div className="bg-blue-50 rounded-lg p-3">
                       <div className="flex items-center gap-2 mb-2">
                         <MapPin className="w-4 h-4 text-blue-600" />
-                        <span className="text-sm font-medium text-blue-800">Delivery Location</span>
+                        <span className="text-sm font-medium text-blue-800">{t('delivery_location_label')}</span>
                       </div>
                       <p className="text-sm text-blue-700">{selectedGroup.deliveryAddress}</p>
                       {currentLocation && (
                         <p className="text-xs text-blue-600 mt-1">
-                          {getDistanceText(selectedGroup)} from your location
+                          {getDistanceText(selectedGroup)} {t('from_your_location')}
                         </p>
                       )}
                     </div>
@@ -2017,16 +2162,16 @@ const VendorDashboard = () => {
                     {/* Available Quantity Information */}
                     <div className="bg-green-50 rounded-lg p-3">
                       <div className="text-sm text-green-800">
-                        <strong>Available to Order:</strong> {parseInt(selectedGroup.targetQty.split(' ')[0]) - parseInt(selectedGroup.currentQty.split(' ')[0])} kg remaining
+                        <strong>{t('available_to_order_label')}</strong> {parseInt(selectedGroup.targetQty.split(' ')[0]) - parseInt(selectedGroup.currentQty.split(' ')[0])} {t('kg_remaining')}
                       </div>
                       <div className="text-xs text-green-600 mt-1">
-                        Join now to secure your quantity before the group fills up!
+                        {t('join_now_secure_quantity')}
                       </div>
                     </div>
 
                     <div>
                       <label className="block text-sm font-medium mb-2">
-                        Your Quantity (kg) <span className="text-red-500">*</span>
+                        {t('your_quantity_label')} <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="number"
@@ -2041,15 +2186,15 @@ const VendorDashboard = () => {
                         className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
                         min="1"
                         max={parseInt(selectedGroup.targetQty.split(' ')[0]) - parseInt(selectedGroup.currentQty.split(' ')[0])}
-                        placeholder={`Enter quantity (max: ${parseInt(selectedGroup.targetQty.split(' ')[0]) - parseInt(selectedGroup.currentQty.split(' ')[0])} kg)`}
+                        placeholder={t('enter_quantity_placeholder', { max: parseInt(selectedGroup.targetQty.split(' ')[0]) - parseInt(selectedGroup.currentQty.split(' ')[0]) })}
                       />
                       <div className="flex justify-between text-xs text-gray-500 mt-1">
-                        <span>Minimum: 1 kg</span>
-                        <span>Maximum: {parseInt(selectedGroup.targetQty.split(' ')[0]) - parseInt(selectedGroup.currentQty.split(' ')[0])} kg</span>
+                        <span>{t('minimum_1kg')}</span>
+                        <span>{t('maximum_kg', { max: parseInt(selectedGroup.targetQty.split(' ')[0]) - parseInt(selectedGroup.currentQty.split(' ')[0]) })}</span>
                       </div>
                       {joinQuantity > (parseInt(selectedGroup.targetQty.split(' ')[0]) - parseInt(selectedGroup.currentQty.split(' ')[0])) && (
                         <div className="text-red-500 text-xs mt-1">
-                          Quantity exceeds available amount. Maximum available: {parseInt(selectedGroup.targetQty.split(' ')[0]) - parseInt(selectedGroup.currentQty.split(' ')[0])} kg
+                          {t('quantity_exceeds_available', { max: parseInt(selectedGroup.targetQty.split(' ')[0]) - parseInt(selectedGroup.currentQty.split(' ')[0]) })}
                         </div>
                       )}
                     </div>
@@ -2058,16 +2203,16 @@ const VendorDashboard = () => {
                       <div className="bg-gray-50 p-3 rounded">
                         <div className="text-sm space-y-1">
                           <div className="flex justify-between">
-                            <span>Quantity:</span>
+                            <span>{t('quantity_label')}</span>
                             <span className="font-semibold">{joinQuantity} kg</span>
                           </div>
                           <div className="flex justify-between">
-                            <span>Price per kg:</span>
+                            <span>{t('price_per_kg_label')}</span>
                             <span className="font-semibold">{selectedGroup.pricePerKg}</span>
                           </div>
                           <hr className="my-2" />
                           <div className="flex justify-between text-base">
-                            <span className="font-semibold">Total Cost:</span>
+                            <span className="font-semibold">{t('total_cost_label')}</span>
                             <span className="font-bold text-green-600">
                               ₹{(joinQuantity * parseInt(selectedGroup.pricePerKg.replace('₹', ''))).toLocaleString()}
                             </span>
@@ -2079,7 +2224,7 @@ const VendorDashboard = () => {
 
                   <div className="flex justify-end gap-2 mt-6">
                     <Button variant="outline" onClick={() => setShowJoinModal(false)}>
-                      Cancel
+                      {t('cancel')}
                     </Button>
                     <Button
                       variant="default"
@@ -2092,12 +2237,12 @@ const VendorDashboard = () => {
                       className="bg-green-600 hover:bg-green-700 text-white disabled:bg-gray-400 disabled:cursor-not-allowed"
                     >
                       {(parseInt(selectedGroup.targetQty.split(' ')[0]) - parseInt(selectedGroup.currentQty.split(' ')[0])) <= 0
-                        ? "Group Full"
+                        ? t('group_full')
                         : joinQuantity <= 0
-                          ? "Enter Quantity"
+                          ? t('enter_quantity')
                           : joinQuantity > (parseInt(selectedGroup.targetQty.split(' ')[0]) - parseInt(selectedGroup.currentQty.split(' ')[0]))
-                            ? "Exceeds Limit"
-                            : `Join Group (₹${(joinQuantity * parseInt(selectedGroup.pricePerKg.replace('₹', ''))).toLocaleString()})`
+                            ? t('exceeds_limit')
+                            : `${t('join_group')} (₹${(joinQuantity * parseInt(selectedGroup.pricePerKg.replace('₹', ''))).toLocaleString()})`
                       }
                     </Button>
                   </div>

@@ -25,11 +25,11 @@ import Footer from "@/components/Footer";
 
 // Define tab items for reuse
 const tabItems = [
-  { value: "dashboard", label: "Dashboard", icon: LayoutDashboard, color: "bg-green-600" },
-  { value: "analytics", label: "Analytics", icon: BarChart3, color: "bg-indigo-600" },
-  { value: "group", label: "Group Requests", icon: Users, color: "bg-blue-500" },
-  { value: "individual", label: "My Orders", icon: Package, color: "bg-green-500" },
-  { value: "confirmed", label: "Order History", icon: Clock, color: "bg-purple-500" },
+  { value: "dashboard", label: "Dashboard", icon: LayoutDashboard, color: "bg-green-600", activeClass: "data-[state=active]:bg-green-600" },
+  { value: "analytics", label: "Analytics", icon: BarChart3, color: "bg-indigo-600", activeClass: "data-[state=active]:bg-indigo-600" },
+  { value: "group", label: "Group Requests", icon: Users, color: "bg-blue-500", activeClass: "data-[state=active]:bg-blue-500" },
+
+  { value: "confirmed", label: "Order History", icon: Clock, color: "bg-purple-500", activeClass: "data-[state=active]:bg-purple-500" },
 
 ];
 
@@ -50,7 +50,8 @@ const SupplierDashboard = () => {
     deadlineTime: "",
     latitude: "",
     longitude: "",
-    imageUrl: ""
+    imageUrl: "",
+    category: "Vegetables"
   });
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -75,7 +76,7 @@ const SupplierDashboard = () => {
   const [groupRequests, setGroupRequests] = useState<any[]>([]);
 
   // Orders state
-  const [individualOrders, setIndividualOrders] = useState<any[]>([]);
+
   const [confirmedOrders, setConfirmedOrders] = useState<any[]>([]);
 
   // --- NEW STATE FOR EDITING ---
@@ -530,22 +531,50 @@ const SupplierDashboard = () => {
           }
         }
 
+        // Extract all product IDs from all orders
+        const allProductIds = new Set<string>();
+        relevantOrders.forEach((order: any) => {
+          if (order.items) {
+            order.items.forEach((item: any) => {
+              // Handle both array and object format for product (though now it will be just ID in item, we need to be careful)
+              // Since we removed the join, item.product might be missing or just an ID if we didn't select it.
+              // Actually, order_items table has product_id.
+              if (item.product_id) allProductIds.add(item.product_id);
+            });
+          }
+        });
+
+        // Fetch product details manually
+        let productsMap: Record<string, any> = {};
+        if (allProductIds.size > 0) {
+          const { data: productsData } = await supabase
+            .from('products')
+            .select('id, name, image_url')
+            .in('id', Array.from(allProductIds));
+
+          if (productsData) {
+            productsMap = productsData.reduce((acc, p) => ({ ...acc, [p.id]: p }), {});
+          }
+        }
+
         const transformedOrders = relevantOrders.map((order: any) => {
+          // Attach product details to items
+          const itemsWithProducts = order.items?.map((item: any) => ({
+            ...item,
+            product: productsMap[item.product_id] || { name: 'Unknown Product', image_url: null }
+          })) || [];
+
           // Use the first item's product name or a generic label
-          const productName = order.items && order.items.length > 0
-            ? (order.items[0].product?.name || 'Product')
-            : 'View Details';
+          const firstItem = itemsWithProducts[0];
+          const productName = itemsWithProducts.length > 0
+            ? (firstItem.product?.name || 'Product')
+            : 'No Items Data';
 
           return {
             id: order.id,
             product: productName,
-            // Robustly extract image URL
-            image: order.items && order.items.length > 0
-              ? (Array.isArray(order.items[0].product)
-                ? order.items[0].product[0]?.image_url
-                : order.items[0].product?.image_url)
-              : null,
-            items: order.items || [], // Preserve items array
+            image: firstItem?.product?.image_url || null,
+            items: itemsWithProducts,
             type: order.order_type || 'individual',
             vendors: 1,
             // Map DB status to UI status
@@ -556,7 +585,13 @@ const SupplierDashboard = () => {
                     order.status === 'pending' ? 'Pending' : order.status,
             value: `₹${order.total_amount}`,
             quantity: order.items ? `${order.items.reduce((acc: number, item: any) => acc + item.quantity, 0)} units` : '0 units',
-            deliveryDate: order.delivery_date || 'TBD',
+            deliveryDate: order.delivery_date ? new Date(order.delivery_date).toLocaleString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              hour: 'numeric',
+              minute: 'numeric',
+              hour12: true
+            }) : 'TBD',
             customerName: 'Customer',
             customerPhone: '',
             paymentMethod: 'online',
@@ -564,20 +599,37 @@ const SupplierDashboard = () => {
           };
         });
 
-        // Fetch reviews for these orders
-        const ordersWithReviews = await Promise.all(transformedOrders.map(async (order: any) => {
-          const review = await reviewService.getReviewByOrderId(order.id);
+        // Fetch reviews for all orders in one go
+        const orderIds = transformedOrders.map((o: any) => o.id);
+        let reviewsMap: Record<string, any> = {};
+
+        if (orderIds.length > 0) {
+          try {
+            const reviews = await reviewService.getReviewsByOrderIds(orderIds);
+            if (reviews) {
+              reviewsMap = reviews.reduce((acc: any, review: any) => {
+                acc[review.order_id] = review;
+                return acc;
+              }, {});
+            }
+          } catch (reviewError) {
+            console.error('Error fetching reviews:', reviewError);
+          }
+        }
+
+        const ordersWithReviews = transformedOrders.map((order: any) => {
+          const review = reviewsMap[order.id];
           return {
             ...order,
             review: review
           };
-        }));
+        });
 
         // Separate orders if needed, or put all in confirmedOrders for the dashboard view
         // The UI seems to have "Individual Orders" and "Confirmed Orders" tabs.
         // For now, let's populate confirmedOrders as that's where the action buttons are.
         setConfirmedOrders(ordersWithReviews);
-        setIndividualOrders(ordersWithReviews); // Also populate individual for safety if used elsewhere
+
 
       } catch (error) {
         console.error('Error fetching supplier orders:', error);
@@ -632,7 +684,8 @@ const SupplierDashboard = () => {
       deadlineTime: "",
       latitude: autoFillLocation && currentLocation ? currentLocation.latitude.toString() : "",
       longitude: autoFillLocation && currentLocation ? currentLocation.longitude.toString() : "",
-      imageUrl: ""
+      imageUrl: "",
+      category: "Vegetables"
     });
     setImagePreview(null);
     setImageFile(null);
@@ -667,7 +720,8 @@ const SupplierDashboard = () => {
       deadlineTime: deadlineTime,
       latitude: group.latitude || "",
       longitude: group.longitude || "",
-      imageUrl: group.imageUrl || ""
+      imageUrl: group.imageUrl || "",
+      category: group.category || "Vegetables"
     });
 
     setImagePreview(group.imageUrl || null);
@@ -737,7 +791,7 @@ const SupplierDashboard = () => {
     const productData = {
       supplier_id: supplierData.id,
       name: newGroup.product,
-      category: 'General', // Default
+      category: newGroup.category,
       unit: 'kg', // Default
       price_per_unit: parseFloat(newGroup.finalRate),
       min_order_quantity: parseInt(newGroup.quantity),
@@ -944,12 +998,12 @@ const SupplierDashboard = () => {
                 </div>
 
                 {/* Desktop Tab Navigation */}
-                <TabsList className="hidden lg:grid w-full grid-cols-5 bg-white p-1 rounded-lg border shadow-sm">
+                <TabsList className="hidden lg:grid w-full grid-cols-4 bg-white p-1 rounded-lg border shadow-sm">
                   {tabItems.map((item) => (
                     <TabsTrigger
                       key={item.value}
                       value={item.value}
-                      className={`data-[state=active]:${item.color} data-[state=active]:text-white`}
+                      className={`${item.activeClass} data-[state=active]:text-white`}
                     >
                       {item.label}
                     </TabsTrigger>
@@ -1395,9 +1449,7 @@ const SupplierDashboard = () => {
                         <Button variant="outline" className="w-full justify-start" onClick={() => setActiveTab("group")}>
                           <Package className="mr-2 h-4 w-4" /> Check Stock
                         </Button>
-                        <Button variant="outline" className="w-full justify-start" onClick={() => setActiveTab("individual")}>
-                          <Clock className="mr-2 h-4 w-4" /> View Pending Orders
-                        </Button>
+
                       </CardContent>
                     </Card>
 
@@ -1588,92 +1640,7 @@ const SupplierDashboard = () => {
                   )}
                 </TabsContent>
 
-                <TabsContent value="individual" className="space-y-4">
-                  <div className="bg-green-500 text-white rounded-lg p-6 mb-6">
-                    <h2 className="text-2xl font-bold mb-2">My Orders</h2>
-                    <p className="text-green-100 mb-4">Orders assigned to your business (payment completed)</p>
-                  </div>
 
-                  {individualOrders.length === 0 ? (
-                    <div className="text-center py-12">
-                      <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                      <h3 className="text-lg font-semibold text-gray-600 mb-2">No Orders Assigned</h3>
-                      <p className="text-gray-500 mb-4">
-                        Orders assigned to your business will appear here after vendors select you and complete payment.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-                      {individualOrders.map((order) => (
-                        <div key={order.id} className="bg-white rounded-lg shadow-sm border hover:shadow-md transition-shadow p-4">
-                          <div className="mb-3">
-                            <div className="w-full h-32 bg-green-100 rounded-lg flex items-center justify-center mb-3 overflow-hidden">
-                              {order.image ? (
-                                <img src={order.image} alt={order.product} className="w-full h-full object-cover" />
-                              ) : (
-                                <Package className="w-12 h-12 text-green-600" />
-                              )}
-                            </div>
-                          </div>
-                          {order.items && order.items.length > 0 ? (
-                            <div className="space-y-1 mb-2">
-                              {order.items.map((item: any, idx: number) => (
-                                <div key={idx} className="flex justify-between items-baseline">
-                                  <span className="font-semibold text-lg text-gray-900 truncate pr-2">{item.product?.name || 'Product'}</span>
-                                  <span className="text-sm text-gray-600 whitespace-nowrap">x {item.quantity}</span>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <div className="font-semibold text-lg text-gray-900">{order.product}</div>
-                          )}
-                          <div className="text-gray-600 text-sm">by {order.vendor}</div>
-                          {order.stallName && (
-                            <div className="text-gray-500 text-xs">Stall: {order.stallName}</div>
-                          )}
-                          <div className="flex items-center text-xs text-gray-500 mt-1 mb-2">
-                            <MapPin className="w-3 h-3 mr-1" />
-                            <span>{order.location}</span>
-                          </div>
-                          <div className="text-green-600 font-bold text-lg mb-1">{order.totalValue}</div>
-                          <div className="flex items-center text-xs text-gray-500 mb-2">
-                            <span>Qty: {order.quantity}</span>
-                          </div>
-                          <div className="flex items-center text-xs text-gray-500 mb-2">
-                            <span>Rate: {order.requestedPrice}</span>
-                          </div>
-                          {order.vendorPhone && (
-                            <div className="flex items-center text-xs text-gray-500 mb-2">
-                              <Phone className="w-3 h-3 mr-1" />
-                              <span>{order.vendorPhone}</span>
-                            </div>
-                          )}
-                          <div className="flex items-center text-xs text-gray-500 mb-2">
-                            <CreditCard className="w-3 h-3 mr-1" />
-                            <span className="capitalize">{order.paymentMethod}</span>
-                          </div>
-                          <div className="flex items-center text-xs text-gray-500 mb-3">
-                            <Clock className="w-3 h-3 mr-1" />
-                            <span>{new Date(order.createdAt).toLocaleDateString()}</span>
-                          </div>
-
-                          {/* Payment Status Display */}
-                          <div className="mt-3 p-2 bg-green-50 border border-green-200 rounded-lg">
-                            <div className="flex items-center justify-center">
-                              <CheckCircle className="w-4 h-4 text-green-600 mr-1" />
-                              <span className="text-green-700 font-medium text-sm">
-                                {order.paymentStatus === 'completed' ? 'Payment Confirmed' : 'Payment Pending'}
-                              </span>
-                            </div>
-                            <p className="text-green-600 text-xs text-center mt-1 capitalize">
-                              {order.status === 'confirmed' ? 'Order confirmed and ready for processing' : order.status}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </TabsContent>
 
                 <TabsContent value="confirmed" className="space-y-4">
                   <div className="bg-purple-500 text-white rounded-lg p-6 mb-6">
@@ -1704,6 +1671,14 @@ const SupplierDashboard = () => {
                               </div>
                             )}
                           </div>
+
+                          {/* DEBUG: Show raw data if product is missing */}
+                          {order.product === 'No Items Data' && (
+                            <div className="text-xs text-red-500 mb-2 overflow-hidden">
+                              <p>Missing Data Debug:</p>
+                              <pre>{JSON.stringify(order.items, null, 2)}</pre>
+                            </div>
+                          )}
 
                           <div className="flex-1">
                             <div className="flex justify-between items-start mb-2">
@@ -1758,36 +1733,7 @@ const SupplierDashboard = () => {
                                     try {
                                       await orderService.updateOrderStatus(order.id, 'ready_for_pickup');
                                       toast({ title: 'Ready for Pickup', description: 'Order marked as ready for pickup.' });
-                                      // Refresh orders
-                                      const fetchSupplierOrders = async () => {
-                                        try {
-                                          if (!supplierData?.id) return;
-                                          const relevantOrders = await orderService.getOrdersBySupplierId(supplierData.id);
-                                          const transformedConfirmedOrders = relevantOrders.map((order: any) => {
-                                            return {
-                                              id: order.id,
-                                              product: 'View Details',
-                                              type: order.order_type,
-                                              vendors: 1,
-                                              // Map DB status to UI status
-                                              status: order.status === 'ready_for_pickup' ? 'Ready to Ship' :
-                                                order.status === 'out_for_delivery' ? 'Out for Delivery' :
-                                                  order.status === 'delivered' ? 'Delivered' :
-                                                    order.status === 'confirmed' ? 'Processing' : order.status,
-                                              value: `₹${order.total_amount}`,
-                                              quantity: '0kg',
-                                              deliveryDate: order.delivery_date || 'TBD',
-                                              customerName: 'Customer',
-                                              customerPhone: '',
-                                              paymentMethod: 'online',
-                                              createdAt: order.created_at
-                                            };
-                                          });
-                                          setConfirmedOrders(transformedConfirmedOrders);
-                                        } catch (error) {
-                                          console.error('Error refreshing orders:', error);
-                                        }
-                                      };
+                                      // Refresh orders using the main function
                                       fetchSupplierOrders();
                                     } catch (err: any) {
                                       toast({ title: 'Error', description: `Failed to update status: ${err.message}`, variant: 'destructive' });
@@ -1798,52 +1744,7 @@ const SupplierDashboard = () => {
                                 </button>
                               )}
 
-                              {/* Show "Mark as Delivered" only if it's already out for delivery or ready (manual override) */}
-                              {(order.status === 'out_for_delivery' || order.status === 'Ready to Ship' || order.status === 'ready_for_pickup') && (
-                                <button
-                                  className="w-full bg-purple-600 hover:bg-purple-700 text-white py-2 rounded-lg font-medium transition-colors"
-                                  onClick={async () => {
-                                    try {
-                                      await orderService.updateOrderStatus(order.id, 'delivered');
-                                      toast({ title: 'Delivered', description: 'Order marked as delivered.' });
-                                      // Refresh orders (duplicate logic, ideally refactor to function)
-                                      const fetchSupplierOrders = async () => {
-                                        try {
-                                          if (!supplierData?.id) return;
-                                          const relevantOrders = await orderService.getOrdersBySupplierId(supplierData.id);
-                                          const transformedConfirmedOrders = relevantOrders.map((order: any) => {
-                                            return {
-                                              id: order.id,
-                                              product: 'View Details',
-                                              type: order.order_type,
-                                              vendors: 1,
-                                              status: order.status === 'ready_for_pickup' ? 'Ready to Ship' :
-                                                order.status === 'out_for_delivery' ? 'Out for Delivery' :
-                                                  order.status === 'delivered' ? 'Delivered' :
-                                                    order.status === 'confirmed' ? 'Processing' : order.status,
-                                              value: `₹${order.total_amount}`,
-                                              quantity: '0kg',
-                                              deliveryDate: order.delivery_date || 'TBD',
-                                              customerName: 'Customer',
-                                              customerPhone: '',
-                                              paymentMethod: 'online',
-                                              createdAt: order.created_at
-                                            };
-                                          });
-                                          setConfirmedOrders(transformedConfirmedOrders);
-                                        } catch (error) {
-                                          console.error('Error refreshing orders:', error);
-                                        }
-                                      };
-                                      fetchSupplierOrders();
-                                    } catch (err: any) {
-                                      toast({ title: 'Error', description: `Failed to mark as delivered: ${err.message}`, variant: 'destructive' });
-                                    }
-                                  }}
-                                >
-                                  Mark as Delivered
-                                </button>
-                              )}
+
                             </div>
                           )}
                           {(order.status === 'Delivered' || order.status === 'delivered') && (
@@ -2260,6 +2161,23 @@ const SupplierDashboard = () => {
                         onChange={e => setNewGroup({ ...newGroup, product: e.target.value })}
                         className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium mb-2">Category *</label>
+                      <select
+                        value={newGroup.category}
+                        onChange={e => setNewGroup({ ...newGroup, category: e.target.value })}
+                        className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="Vegetables">Vegetables</option>
+                        <option value="Fruits">Fruits</option>
+                        <option value="Dairy">Dairy</option>
+                        <option value="Grains">Grains</option>
+                        <option value="Spices">Spices</option>
+                        <option value="Beverages">Beverages</option>
+                        <option value="Others">Others</option>
+                      </select>
                     </div>
 
                     <div>
