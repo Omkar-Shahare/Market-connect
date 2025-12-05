@@ -16,7 +16,6 @@ import {
     Wallet
 } from "lucide-react";
 import { formatAmount } from "@/lib/razorpay";
-import { useTranslation } from 'react-i18next';
 
 interface VendorHomeDashboardProps {
     vendorProfile: any;
@@ -31,7 +30,6 @@ const VendorHomeDashboard: React.FC<VendorHomeDashboardProps> = ({
     groupOrders,
     onNavigate
 }) => {
-    const { t } = useTranslation();
 
     // Calculate KPIs
     const kpiStats = useMemo(() => {
@@ -94,10 +92,10 @@ const VendorHomeDashboard: React.FC<VendorHomeDashboardProps> = ({
                 <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                     <div>
                         <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
-                            {t('welcome_back_user', { name: vendorProfile?.owner_name || 'Vendor' })} 👋
+                            Welcome back, {vendorProfile?.owner_name || 'Vendor'}! 👋
                         </h1>
                         <p className="text-blue-100 mt-2 text-base md:text-lg">
-                            {t('daily_overview')}
+                            Here's your daily business overview.
                         </p>
                     </div>
                     <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm px-3 py-1.5 md:px-4 md:py-2 rounded-full border border-white/20">
@@ -125,7 +123,7 @@ const VendorHomeDashboard: React.FC<VendorHomeDashboardProps> = ({
                             </span>
                         </div>
                         <div>
-                            <p className="text-sm font-medium text-gray-500">{t('total_orders')}</p>
+                            <p className="text-sm font-medium text-gray-500">Total Orders</p>
                             <h3 className="text-2xl md:text-3xl font-bold text-gray-900 mt-1">{kpiStats.totalOrders}</h3>
                         </div>
                     </CardContent>
@@ -138,11 +136,11 @@ const VendorHomeDashboard: React.FC<VendorHomeDashboardProps> = ({
                                 <Users className="w-5 h-5 md:w-6 md:h-6" />
                             </div>
                             <span className="flex items-center text-xs font-medium text-blue-600 bg-blue-50 px-2 py-1 rounded-full cursor-pointer hover:bg-blue-100" onClick={() => onNavigate('group')}>
-                                {t('join_now')} <ChevronRight className="w-3 h-3 ml-1" />
+                                Join now <ChevronRight className="w-3 h-3 ml-1" />
                             </span>
                         </div>
                         <div>
-                            <p className="text-sm font-medium text-gray-500">{t('active_groups')}</p>
+                            <p className="text-sm font-medium text-gray-500">Active Groups</p>
                             <h3 className="text-2xl md:text-3xl font-bold text-gray-900 mt-1">{kpiStats.activeGroups}</h3>
                         </div>
                     </CardContent>
@@ -155,11 +153,11 @@ const VendorHomeDashboard: React.FC<VendorHomeDashboardProps> = ({
                                 <Wallet className="w-5 h-5 md:w-6 md:h-6" />
                             </div>
                             <span className="flex items-center text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded-full">
-                                <TrendingUp className="w-3 h-3 mr-1" /> +12% {t('last_month')}
+                                <TrendingUp className="w-3 h-3 mr-1" /> +12% vs last month
                             </span>
                         </div>
                         <div>
-                            <p className="text-sm font-medium text-gray-500">{t('total_savings')}</p>
+                            <p className="text-sm font-medium text-gray-500">Total Savings</p>
                             <h3 className="text-2xl md:text-3xl font-bold text-gray-900 mt-1">{formatAmount(kpiStats.totalSavings)}</h3>
                         </div>
                     </CardContent>
@@ -173,7 +171,7 @@ const VendorHomeDashboard: React.FC<VendorHomeDashboardProps> = ({
                     {/* Quick Actions */}
                     <Card className="border-none shadow-md bg-white">
                         <CardHeader className="border-b border-gray-100 pb-4">
-                            <CardTitle className="text-lg font-bold text-gray-800">{t('quick_actions')}</CardTitle>
+                            <CardTitle className="text-lg font-bold text-gray-800">Quick Actions</CardTitle>
                         </CardHeader>
                         <CardContent className="p-4 md:p-6">
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4">
@@ -184,8 +182,8 @@ const VendorHomeDashboard: React.FC<VendorHomeDashboardProps> = ({
                                     <div className="p-2.5 md:p-3 bg-white text-blue-600 rounded-full mb-2 shadow-sm group-hover:scale-110 transition-transform">
                                         <Store className="w-5 h-5 md:w-6 md:h-6" />
                                     </div>
-                                    <span className="font-semibold text-gray-900">{t('browse_suppliers')}</span>
-                                    <span className="text-xs text-gray-500 mt-1">{t('find_new_partners')}</span>
+                                    <span className="font-semibold text-gray-900">Browse Suppliers</span>
+                                    <span className="text-xs text-gray-500 mt-1">Find new partners</span>
                                 </button>
 
                                 <button
@@ -195,8 +193,8 @@ const VendorHomeDashboard: React.FC<VendorHomeDashboardProps> = ({
                                     <div className="p-2.5 md:p-3 bg-white text-green-600 rounded-full mb-2 shadow-sm group-hover:scale-110 transition-transform">
                                         <Users className="w-5 h-5 md:w-6 md:h-6" />
                                     </div>
-                                    <span className="font-semibold text-gray-900">{t('group_buying')}</span>
-                                    <span className="text-xs text-gray-500 mt-1">{t('save_together')}</span>
+                                    <span className="font-semibold text-gray-900">Group Buying</span>
+                                    <span className="text-xs text-gray-500 mt-1">Save together</span>
                                 </button>
 
                                 <button
@@ -206,8 +204,8 @@ const VendorHomeDashboard: React.FC<VendorHomeDashboardProps> = ({
                                     <div className="p-2.5 md:p-3 bg-white text-purple-600 rounded-full mb-2 shadow-sm group-hover:scale-110 transition-transform">
                                         <ShoppingBag className="w-5 h-5 md:w-6 md:h-6" />
                                     </div>
-                                    <span className="font-semibold text-gray-900">{t('order_history')}</span>
-                                    <span className="text-xs text-gray-500 mt-1">{t('track_reorder')}</span>
+                                    <span className="font-semibold text-gray-900">Order History</span>
+                                    <span className="text-xs text-gray-500 mt-1">Track & reorder</span>
                                 </button>
                             </div>
                         </CardContent>
@@ -216,9 +214,9 @@ const VendorHomeDashboard: React.FC<VendorHomeDashboardProps> = ({
                     {/* Recent Orders Tab Section */}
                     <Card className="border-none shadow-md bg-white overflow-hidden">
                         <CardHeader className="flex flex-row items-center justify-between border-b border-gray-100 bg-gray-50/50 px-4 py-3 md:px-6 md:py-4">
-                            <CardTitle className="text-lg font-bold text-gray-800">{t('recent_orders')}</CardTitle>
+                            <CardTitle className="text-lg font-bold text-gray-800">Recent Orders</CardTitle>
                             <Button variant="ghost" size="sm" onClick={() => onNavigate('orders')} className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 font-medium">
-                                {t('view_all')} <ArrowRight className="w-4 h-4 ml-1" />
+                                View All <ArrowRight className="w-4 h-4 ml-1" />
                             </Button>
                         </CardHeader>
                         <CardContent className="p-0">
@@ -270,10 +268,10 @@ const VendorHomeDashboard: React.FC<VendorHomeDashboardProps> = ({
                                     <div className="bg-gray-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
                                         <ShoppingBag className="w-8 h-8 text-gray-300" />
                                     </div>
-                                    <h3 className="text-lg font-medium text-gray-900">{t('no_orders_yet')}</h3>
-                                    <p className="text-gray-500 mt-1 mb-4">{t('start_shopping_activity')}</p>
+                                    <h3 className="text-lg font-medium text-gray-900">No orders yet</h3>
+                                    <p className="text-gray-500 mt-1 mb-4">Start shopping to see your recent activity here.</p>
                                     <Button onClick={() => onNavigate('suppliers')} className="bg-blue-600 hover:bg-blue-700 text-white">
-                                        {t('browse_suppliers')}
+                                        Browse Suppliers
                                     </Button>
                                 </div>
                             )}
@@ -293,12 +291,12 @@ const VendorHomeDashboard: React.FC<VendorHomeDashboardProps> = ({
                                 <div className="p-1.5 bg-blue-500/20 rounded-lg">
                                     <TrendingUp className="w-4 h-4 text-blue-400" />
                                 </div>
-                                {t('business_insights')}
+                                Business Insights
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="relative z-10 space-y-6 pt-6">
                             <div className="group">
-                                <p className="text-slate-400 text-xs font-medium uppercase tracking-wider mb-1">{t('average_order_value')}</p>
+                                <p className="text-slate-400 text-xs font-medium uppercase tracking-wider mb-1">Average Order Value</p>
                                 <div className="flex items-baseline gap-2">
                                     <p className="text-3xl font-bold text-white group-hover:text-blue-300 transition-colors">{formatAmount(insights.aov)}</p>
                                 </div>
@@ -306,21 +304,21 @@ const VendorHomeDashboard: React.FC<VendorHomeDashboardProps> = ({
 
                             <div className="pt-4 border-t border-white/10 group">
                                 <div className="flex justify-between items-end mb-1">
-                                    <p className="text-slate-400 text-xs font-medium uppercase tracking-wider">{t('monthly_spending')}</p>
-                                    <span className="text-xs text-green-400 bg-green-400/10 px-2 py-0.5 rounded-full">{t('current_month')}</span>
+                                    <p className="text-slate-400 text-xs font-medium uppercase tracking-wider">Monthly Spending</p>
+                                    <span className="text-xs text-green-400 bg-green-400/10 px-2 py-0.5 rounded-full">Current Month</span>
                                 </div>
                                 <p className="text-3xl font-bold text-white group-hover:text-green-300 transition-colors">{formatAmount(insights.monthlySpending)}</p>
                             </div>
 
                             <div className="pt-4 border-t border-white/10 group">
-                                <p className="text-slate-400 text-xs font-medium uppercase tracking-wider mb-2">{t('top_supplier')}</p>
+                                <p className="text-slate-400 text-xs font-medium uppercase tracking-wider mb-2">Top Supplier</p>
                                 <div className="flex items-center gap-3 bg-white/5 p-3 rounded-lg border border-white/5 hover:bg-white/10 transition-colors">
                                     <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-bold text-lg">
                                         {insights.favoriteSupplier.charAt(0)}
                                     </div>
                                     <div className="overflow-hidden">
                                         <p className="text-white font-semibold truncate">{insights.favoriteSupplier}</p>
-                                        <p className="text-xs text-slate-400">{t('most_frequent_partner')}</p>
+                                        <p className="text-xs text-slate-400">Most frequent partner</p>
                                     </div>
                                 </div>
                             </div>
@@ -335,16 +333,16 @@ const VendorHomeDashboard: React.FC<VendorHomeDashboardProps> = ({
                                     <Users className="w-5 h-5" />
                                 </div>
                                 <div>
-                                    <h3 className="font-bold text-blue-900 mb-1">{t('maximize_savings')}</h3>
+                                    <h3 className="font-bold text-blue-900 mb-1">Maximize Savings</h3>
                                     <p className="text-sm text-blue-800/80 leading-relaxed">
-                                        {t('join_group_save_up_to')} <span className="font-bold text-blue-700">20%</span>.
+                                        Join a group order today and save up to <span className="font-bold text-blue-700">20%</span> on delivery and product costs.
                                     </p>
                                     <Button
                                         variant="link"
                                         className="px-0 text-blue-700 mt-2 h-auto font-semibold hover:text-blue-800 group"
                                         onClick={() => onNavigate('group')}
                                     >
-                                        {t('explore_groups')} <ArrowRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" />
+                                        Explore Groups <ArrowRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" />
                                     </Button>
                                 </div>
                             </div>

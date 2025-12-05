@@ -74,25 +74,40 @@ export const authService = {
   },
 
   signInWithGoogle: async ({ userType }: GoogleSignInOptions) => {
+    console.log('Starting Google Sign-In...');
+    console.log('User Type:', userType);
     const redirectUrl = `${window.location.origin}/auth/callback`;
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: redirectUrl,
-        queryParams: {
-          access_type: 'offline',
-          prompt: 'consent',
+    console.log('Redirect URL:', redirectUrl);
+
+    try {
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: redirectUrl,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
+          scopes: 'email profile',
         },
-        scopes: 'email profile',
-      },
-    });
+      });
 
-    if (error) throw error;
+      if (error) {
+        console.error('Supabase Google Sign-In Error:', error);
+        throw error;
+      }
 
-    if (userType) {
-      localStorage.setItem('pendingUserType', userType);
+      console.log('Google Sign-In initiated successfully:', data);
+
+      if (userType) {
+        console.log('Setting pendingUserType in localStorage:', userType);
+        localStorage.setItem('pendingUserType', userType);
+      }
+
+      return data;
+    } catch (err) {
+      console.error('Unexpected error during Google Sign-In:', err);
+      throw err;
     }
-
-    return data;
   },
 };

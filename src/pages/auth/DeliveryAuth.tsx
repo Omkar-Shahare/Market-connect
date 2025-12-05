@@ -33,17 +33,20 @@ const DeliveryAuth: React.FC = () => {
         });
         navigate("/delivery/profile-setup"); // Navigate to delivery profile setup
       }
-    // CORRECTED LINE: Removed the extra ' ' before the {
-    } catch (err: any) { 
+      // CORRECTED LINE: Removed the extra ' ' before the {
+    } catch (err: any) {
       setError(err.message);
     }
   };
 
   const handleGoogleSignIn = async () => {
+    console.log('DeliveryAuth: Initiating Google Sign-In...');
     try {
       setError("");
       await authService.signInWithGoogle({ userType: 'delivery' }); // Set userType
+      console.log('DeliveryAuth: Google Sign-In initiated.');
     } catch (err: any) {
+      console.error('DeliveryAuth: Google Sign-In failed', err);
       setError(err.message);
       toast.error("Failed to sign in with Google");
     }
