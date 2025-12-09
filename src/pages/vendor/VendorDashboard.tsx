@@ -1767,10 +1767,7 @@ const VendorDashboard = () => {
                             <div className="flex items-center text-xs text-gray-500 mt-1 mb-2">
                               <span>{order.participants} members</span>
                               <span className="ml-2 bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs">
-                                {(() => {
-                                  const val = order.discountPercentage || order.discount || '15%';
-                                  return val.toString().includes('%') ? val : `${val}%`;
-                                })()} OFF
+                                {order.discountPercentage || order.discount || '15%'} OFF
                               </span>
                             </div>
 
@@ -2356,12 +2353,7 @@ const VendorDashboard = () => {
                       <h2 className="text-2xl font-semibold mb-2">Join Group Order</h2>
                       <div className="flex items-center gap-2 text-sm text-gray-600">
                         <span>by {selectedGroup.supplier}</span>
-                        <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs">
-                          {(() => {
-                            const val = selectedGroup.discount || '0%';
-                            return val.toString().includes('%') ? val : `${val}%`;
-                          })()} OFF
-                        </span>
+                        <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs">{selectedGroup.discount} OFF</span>
                         <span>{selectedGroup.participants} members</span>
                       </div>
                     </div>
