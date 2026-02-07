@@ -102,8 +102,13 @@ const SupplierProfileSetup: React.FC = () => {
 
           toast({
             title: "Profile Loaded",
-            description: "Your existing profile data has been loaded for editing.",
+            description: "Your existing profile data has been loaded. Redirecting to dashboard...",
           });
+
+          // Auto-redirect to dashboard if profile exists
+          setTimeout(() => {
+            navigate("/supplier/dashboard");
+          }, 1500);
         } else {
           console.log("No existing profile found");
           if (user.phone) {
@@ -265,7 +270,7 @@ const SupplierProfileSetup: React.FC = () => {
   const businessTypes = ["Wholesale", "Retail", "Manufacturing", "Distribution", "Import/Export", "Local Supplier", "Other"];
   const supplyCapabilities = ["Spices", "Oil", "Vegetables", "Grains", "Dairy", "Meat", "Fruits", "Flour", "Sugar", "Salt", "Herbs", "Packaging", "Equipment"];
   const deliveryTimes = ["Morning (6 AM - 12 PM)", "Afternoon (12 PM - 6 PM)", "Evening (6 PM - 12 AM)"];
-  
+
   // Additional options for new fields
   const employeeCounts = ["1-10", "11-25", "25-50", "50-100", "100+"];
 
@@ -281,19 +286,19 @@ const SupplierProfileSetup: React.FC = () => {
               {isEditMode ? "Edit Your Supplier Profile" : "Complete Your Supplier Profile"}
             </CardTitle>
             <CardDescription>
-              {isEditMode 
+              {isEditMode
                 ? "Update your business information to keep your profile current"
                 : "Help us understand your business better to connect you with the right vendors"
               }
             </CardDescription>
           </CardHeader>
-          
+
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Personal Details */}
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-supplier">Personal Details</h3>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="fullName">Full Name *</Label>
@@ -305,7 +310,7 @@ const SupplierProfileSetup: React.FC = () => {
                       required
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="mobileNumber">Mobile Number *</Label>
                     <Input
@@ -337,7 +342,7 @@ const SupplierProfileSetup: React.FC = () => {
               {/* Business Details */}
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-supplier">Business Details</h3>
-                
+
                 <div className="space-y-2">
                   <Label htmlFor="businessName">Business Name (Optional)</Label>
                   <Input
@@ -370,7 +375,7 @@ const SupplierProfileSetup: React.FC = () => {
                       required
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="pincode">Pincode *</Label>
                     <Input
@@ -381,7 +386,7 @@ const SupplierProfileSetup: React.FC = () => {
                       required
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="state">State *</Label>
                     <Select value={formData.state} onValueChange={(value) => handleInputChange("state", value)}>
@@ -422,7 +427,7 @@ const SupplierProfileSetup: React.FC = () => {
                       placeholder="Enter GST number"
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="licenseNumber">License Number</Label>
                     <Input
@@ -445,7 +450,7 @@ const SupplierProfileSetup: React.FC = () => {
                       placeholder="Enter years in business"
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="employeeCount">Employee Count</Label>
                     <Select value={formData.employeeCount} onValueChange={(value) => handleInputChange("employeeCount", value)}>
@@ -463,7 +468,7 @@ const SupplierProfileSetup: React.FC = () => {
 
                 {/* Contact Information */}
                 <h3 className="text-lg font-semibold text-supplier">Contact Information</h3>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="primaryEmail">Primary Email</Label>
@@ -475,7 +480,7 @@ const SupplierProfileSetup: React.FC = () => {
                       placeholder="Enter primary email"
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="whatsappBusiness">WhatsApp Business</Label>
                     <Input
@@ -509,7 +514,7 @@ const SupplierProfileSetup: React.FC = () => {
               {/* Delivery Preferences */}
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-supplier">Delivery Preferences</h3>
-                
+
                 <div className="space-y-2">
                   <Label htmlFor="preferredDeliveryTime">Preferred Delivery Time Slot *</Label>
                   <Select value={formData.preferredDeliveryTime} onValueChange={(value) => handleInputChange("preferredDeliveryTime", value)}>
@@ -528,7 +533,7 @@ const SupplierProfileSetup: React.FC = () => {
               {/* Certifications */}
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-supplier">Certifications (Optional)</h3>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="foodSafetyLicense">Food Safety License</Label>
@@ -539,7 +544,7 @@ const SupplierProfileSetup: React.FC = () => {
                       placeholder="Enter license number"
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="organicCertification">Organic Certification</Label>
                     <Input
@@ -561,7 +566,7 @@ const SupplierProfileSetup: React.FC = () => {
                       placeholder="e.g., ISO 22000:2018"
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="exportLicense">Export License</Label>
                     <Input
@@ -577,7 +582,7 @@ const SupplierProfileSetup: React.FC = () => {
               {/* Location */}
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-supplier">Location (Optional)</h3>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="latitude">Latitude</Label>
@@ -588,7 +593,7 @@ const SupplierProfileSetup: React.FC = () => {
                       placeholder="Auto-detect or enter manually"
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="longitude">Longitude</Label>
                     <Input
@@ -599,7 +604,7 @@ const SupplierProfileSetup: React.FC = () => {
                     />
                   </div>
                 </div>
-                
+
                 <Button
                   type="button"
                   variant="outline"
@@ -617,8 +622,8 @@ const SupplierProfileSetup: React.FC = () => {
                 className="w-full"
                 disabled={loading}
               >
-                {loading 
-                  ? (isEditMode ? "Updating profile..." : "Setting up profile...") 
+                {loading
+                  ? (isEditMode ? "Updating profile..." : "Setting up profile...")
                   : (isEditMode ? "Update Profile" : "Complete Profile Setup")
                 }
               </Button>

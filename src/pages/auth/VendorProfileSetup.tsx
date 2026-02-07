@@ -47,7 +47,7 @@ const VendorProfileSetup: React.FC = () => {
         navigate("/vendor/login");
         return;
       }
-    
+
       try {
         console.log("Fetching existing vendor profile for user ID:", user.id);
         const { data: existingProfile, error: profileError } = await supabase
@@ -79,8 +79,13 @@ const VendorProfileSetup: React.FC = () => {
 
           toast({
             title: "Profile Loaded",
-            description: "Your existing profile data has been loaded for editing.",
+            description: "Your existing profile data has been loaded. Redirecting to dashboard...",
           });
+
+          // Auto-redirect to dashboard if profile exists
+          setTimeout(() => {
+            navigate("/vendor/dashboard");
+          }, 1500);
         } else {
           console.log("No existing profile found");
           if (user.phone) {
@@ -250,19 +255,19 @@ const VendorProfileSetup: React.FC = () => {
               {isEditMode ? 'Edit Your Vendor Profile' : 'Complete Your Vendor Profile'}
             </CardTitle>
             <CardDescription>
-              {isEditMode 
-                ? 'Update your business information and preferences' 
+              {isEditMode
+                ? 'Update your business information and preferences'
                 : 'Help us understand your business better to provide personalized services'
               }
             </CardDescription>
           </CardHeader>
-          
+
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Personal Details */}
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-vendor">Personal Details</h3>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="fullName">Full Name *</Label>
@@ -274,7 +279,7 @@ const VendorProfileSetup: React.FC = () => {
                       required
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="mobileNumber">Mobile Number *</Label>
                     <Input
@@ -306,7 +311,7 @@ const VendorProfileSetup: React.FC = () => {
               {/* Business Details */}
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-vendor">Business Details</h3>
-                
+
                 <div className="space-y-2">
                   <Label htmlFor="stallName">Stall Name (Optional)</Label>
                   <Input
@@ -339,7 +344,7 @@ const VendorProfileSetup: React.FC = () => {
                       required
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="pincode">Pincode *</Label>
                     <Input
@@ -350,7 +355,7 @@ const VendorProfileSetup: React.FC = () => {
                       required
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="state">State *</Label>
                     <Select value={formData.state} onValueChange={(value) => handleInputChange("state", value)}>
@@ -401,7 +406,7 @@ const VendorProfileSetup: React.FC = () => {
               {/* Delivery Preferences */}
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-vendor">Delivery Preferences</h3>
-                
+
                 <div className="space-y-2">
                   <Label htmlFor="preferredDeliveryTime">Preferred Delivery Time Slot *</Label>
                   <Select value={formData.preferredDeliveryTime} onValueChange={(value) => handleInputChange("preferredDeliveryTime", value)}>
@@ -420,7 +425,7 @@ const VendorProfileSetup: React.FC = () => {
               {/* Location */}
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-vendor">Location (Optional)</h3>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="latitude">Latitude</Label>
@@ -431,7 +436,7 @@ const VendorProfileSetup: React.FC = () => {
                       placeholder="Auto-detect or enter manually"
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="longitude">Longitude</Label>
                     <Input
@@ -442,7 +447,7 @@ const VendorProfileSetup: React.FC = () => {
                     />
                   </div>
                 </div>
-                
+
                 <Button
                   type="button"
                   variant="outline"
@@ -460,8 +465,8 @@ const VendorProfileSetup: React.FC = () => {
                 className="w-full"
                 disabled={loading}
               >
-                {loading 
-                  ? (isEditMode ? "Updating profile..." : "Setting up profile...") 
+                {loading
+                  ? (isEditMode ? "Updating profile..." : "Setting up profile...")
                   : (isEditMode ? "Update Profile" : "Complete Profile Setup")
                 }
               </Button>

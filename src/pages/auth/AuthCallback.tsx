@@ -85,10 +85,9 @@ const AuthCallback = () => {
       const userType = localStorage.getItem('pendingUserType');
       console.log('AuthCallback: Processing session for user:', user.id);
       console.log('AuthCallback: pendingUserType:', userType);
-      localStorage.removeItem('pendingUserType');
+      // localStorage.removeItem('pendingUserType'); // Keep this for potential re-runs due to sub/session race
 
-      // Helper to run query with timeout
-      const runQueryWithTimeout = async (queryPromise: Promise<any>, timeoutMs = 5000) => {
+      const runQueryWithTimeout = async (queryPromise: Promise<any>, timeoutMs = 15000) => {
         let timeoutHandle: NodeJS.Timeout;
         const timeoutPromise = new Promise((_, reject) => {
           timeoutHandle = setTimeout(() => reject(new Error('Database query timed out')), timeoutMs);
@@ -109,22 +108,26 @@ const AuthCallback = () => {
           if (userType === 'vendor') {
             console.log('AuthCallback: Checking vendor profile...');
             let vendorProfile = null;
+            let checkFailed = false;
             try {
-              const { data } = await runQueryWithTimeout(
+              const { data, error } = await runQueryWithTimeout(
                 supabase
                   .from('vendors')
                   .select('id')
                   .eq('user_id', user.id)
                   .maybeSingle() as unknown as Promise<any>
               );
+              if (error) throw error;
               vendorProfile = data;
             } catch (e) {
-              console.warn('AuthCallback: Profile check timed out or failed, falling back to setup:', e);
+              console.warn('AuthCallback: Profile check timed out or failed:', e);
+              checkFailed = true;
             }
 
             console.log('AuthCallback: Vendor profile:', vendorProfile);
 
-            if (vendorProfile) {
+            // If profile found OR check failed (assume success/let dashboard handle it), go to dashboard
+            if (vendorProfile || checkFailed) {
               console.log('AuthCallback: Navigating to vendor dashboard');
               navigate('/vendor/dashboard');
             } else {
@@ -134,22 +137,25 @@ const AuthCallback = () => {
           } else if (userType === 'supplier') {
             console.log('AuthCallback: Checking supplier profile...');
             let supplierProfile = null;
+            let checkFailed = false;
             try {
-              const { data } = await runQueryWithTimeout(
+              const { data, error } = await runQueryWithTimeout(
                 supabase
                   .from('suppliers')
                   .select('id')
                   .eq('user_id', user.id)
                   .maybeSingle() as unknown as Promise<any>
               );
+              if (error) throw error;
               supplierProfile = data;
             } catch (e) {
-              console.warn('AuthCallback: Profile check timed out or failed, falling back to setup:', e);
+              console.warn('AuthCallback: Profile check timed out or failed:', e);
+              checkFailed = true;
             }
 
             console.log('AuthCallback: Supplier profile:', supplierProfile);
 
-            if (supplierProfile) {
+            if (supplierProfile || checkFailed) {
               console.log('AuthCallback: Navigating to supplier dashboard');
               navigate('/supplier/dashboard');
             } else {
@@ -161,22 +167,25 @@ const AuthCallback = () => {
           else if (userType === 'delivery') {
             console.log('AuthCallback: Checking delivery profile...');
             let deliveryProfile = null;
+            let checkFailed = false;
             try {
-              const { data } = await runQueryWithTimeout(
+              const { data, error } = await runQueryWithTimeout(
                 supabase
                   .from('delivery_partners') // Check 'delivery_partners' table
                   .select('id')
                   .eq('user_id', user.id)
                   .maybeSingle() as unknown as Promise<any>
               );
+              if (error) throw error;
               deliveryProfile = data;
             } catch (e) {
-              console.warn('AuthCallback: Profile check timed out or failed, falling back to setup:', e);
+              console.warn('AuthCallback: Profile check timed out or failed:', e);
+              checkFailed = true;
             }
 
             console.log('AuthCallback: Delivery profile:', deliveryProfile);
 
-            if (deliveryProfile) {
+            if (deliveryProfile || checkFailed) {
               console.log('AuthCallback: Navigating to delivery dashboard');
               navigate('/delivery/dashboard'); // Go to delivery dashboard
             } else {

@@ -67,8 +67,13 @@ const DeliveryProfileSetup: React.FC = () => {
 
           toast({
             title: "Profile Loaded",
-            description: "Your existing profile data has been loaded for editing.",
+            description: "Your existing profile data has been loaded. Redirecting to dashboard...",
           });
+
+          // Auto-redirect to dashboard if profile exists
+          setTimeout(() => {
+            navigate("/delivery/dashboard");
+          }, 1500);
         } else {
           console.log("No existing profile found");
           if (user.phone) {
@@ -187,7 +192,7 @@ const DeliveryProfileSetup: React.FC = () => {
       setLoading(false);
     }
   };
-  
+
   const vehicleTypes = ["Bike", "Scooter", "E-Rickshaw", "Auto-Rickshaw", "Van", "Small Truck"];
 
   return (
@@ -205,19 +210,19 @@ const DeliveryProfileSetup: React.FC = () => {
               {isEditMode ? "Edit Your Delivery Profile" : "Complete Your Delivery Profile"}
             </CardTitle>
             <CardDescription>
-              {isEditMode 
+              {isEditMode
                 ? "Update your information to keep your profile current"
                 : "Provide your details to start accepting delivery jobs"
               }
             </CardDescription>
           </CardHeader>
-          
+
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Personal Details */}
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-delivery">Personal Details</h3>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="fullName">Full Name *</Label>
@@ -229,7 +234,7 @@ const DeliveryProfileSetup: React.FC = () => {
                       required
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="mobileNumber">Mobile Number *</Label>
                     <Input
@@ -258,7 +263,7 @@ const DeliveryProfileSetup: React.FC = () => {
                       required
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="pincode">Pincode *</Label>
                     <Input
@@ -275,7 +280,7 @@ const DeliveryProfileSetup: React.FC = () => {
               {/* Vehicle Details */}
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-delivery">Vehicle & License Details</h3>
-                
+
                 <div className="space-y-2">
                   <Label htmlFor="vehicleType">Vehicle Type *</Label>
                   <Select value={formData.vehicleType} onValueChange={(value) => handleInputChange("vehicleType", value)}>
@@ -301,7 +306,7 @@ const DeliveryProfileSetup: React.FC = () => {
                       required
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="drivingLicense">Driving License Number *</Label>
                     <Input
@@ -322,8 +327,8 @@ const DeliveryProfileSetup: React.FC = () => {
                 className="w-full"
                 disabled={loading}
               >
-                {loading 
-                  ? (isEditMode ? "Updating profile..." : "Setting up profile...") 
+                {loading
+                  ? (isEditMode ? "Updating profile..." : "Setting up profile...")
                   : (isEditMode ? "Update Profile" : "Complete Profile Setup")
                 }
               </Button>

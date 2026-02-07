@@ -4,9 +4,59 @@ import { ShoppingCart, Users, Package, TrendingUp, Truck } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import { useAuth } from "@/contexts/AuthContext";
+import { useEffect } from "react";
+import { supabase } from "@/lib/supabase";
 
 const Landing = () => {
   const navigate = useNavigate();
+  const { user, loading } = useAuth();
+
+  useEffect(() => {
+    const checkUserAndRedirect = async () => {
+      if (!loading && user) {
+        console.log("Landing: User is authenticated, checking role...");
+        // 1. Check metadata first (fastest)
+        const userType = user.user_metadata?.userType;
+        if (userType === 'vendor') {
+          navigate('/vendor/dashboard');
+          return;
+        }
+        if (userType === 'supplier') {
+          navigate('/supplier/dashboard');
+          return;
+        }
+        if (userType === 'delivery') {
+          navigate('/delivery/dashboard');
+          return;
+        }
+
+        // 2. If metadata missing, check tables
+        // Check Vendor
+        const { data: vendor } = await supabase.from('vendors').select('id').eq('user_id', user.id).maybeSingle();
+        if (vendor) {
+          navigate('/vendor/dashboard');
+          return;
+        }
+
+        // Check Supplier
+        const { data: supplier } = await supabase.from('suppliers').select('id').eq('user_id', user.id).maybeSingle();
+        if (supplier) {
+          navigate('/supplier/dashboard');
+          return;
+        }
+
+        // Check Delivery
+        const { data: delivery } = await supabase.from('delivery_partners').select('id').eq('user_id', user.id).maybeSingle();
+        if (delivery) {
+          navigate('/delivery/dashboard');
+          return;
+        }
+      }
+    };
+
+    checkUserAndRedirect();
+  }, [user, loading, navigate]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-green-50 relative">

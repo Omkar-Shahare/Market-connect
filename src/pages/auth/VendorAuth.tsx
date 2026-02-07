@@ -25,6 +25,71 @@ const VendorAuth: React.FC = () => {
     setIsLogin(location.pathname === '/vendor/login');
   }, [location.pathname]);
 
+  // Auto-redirect if already logged in
+  useEffect(() => {
+    const checkUser = async () => {
+      // Get current user
+      const { data: { user } } = await authService.getCurrentUser()
+        .then(u => ({ data: { user: u } }))
+        .catch(() => ({ data: { user: null } }));
+
+      if (user) {
+        console.log("VendorAuth check: User found", user.id);
+        // Build query using supabase client directly to avoid service dep recursion if any
+        // or just use the service.
+        // Let's use the service but handle errors gracefully
+        try {
+          // We can't use vendorService here easily if it's not imported,
+          // but we can import it or use supabase directly.
+          // Let's use supabase directly for this check to be safe and fast.
+          const { data: vendor, error } = await import('@/lib/supabase').then(m => m.supabase
+            .from('vendors')
+            .select('id')
+            .eq('user_id', user.id)
+            .maybeSingle()
+          );
+
+          if (error) {
+            console.error("VendorAuth check: Error fetching profile", error);
+          }
+
+          console.log("VendorAuth check: Profile result", vendor);
+
+          if (vendor) {
+            console.log("VendorAuth check: Redirecting to Dashboard");
+            navigate("/vendor/dashboard");
+          } else {
+            // User is logged in but has no vendor profile? 
+            // Might be a supplier or delivery partner logged in on vendor page.
+            // In that case, we should probably let them see the login page 
+            // OR redirect them to their own dashboard?
+            // The constraint is simple: "One single email ID should be able to Login as Vendor... AND access all 3"
+            // So if I am logged in as Supplier, and I come here, I WANT to login as Vendor.
+            // But if I am ALREADY a Vendor, checking vendor table will tell me.
+
+            // Wait, if I am logged in as Supplier (different role same email), 
+            // 'user' will be present. 
+            // If I check 'vendors' table and I am NOT there, it means I haven't set up vendor profile OR I am not a vendor.
+
+            // If I am not a vendor yet, I should see the Sign Up / Login page so I can "Become a Vendor".
+            // BUT, if I try to "Login" again with same email, Supabase might say "User already registered".
+            // So I should probably just be redirected to Profile Setup if I'm already auth'd but missing profile?
+
+            // If I navigate to /vendor/profile-setup, it will handle "create new vendor profile for existing user".
+            console.log("VendorAuth check: Redirecting to Profile Setup");
+            navigate("/vendor/profile-setup");
+          }
+        } catch (e) {
+          console.error("Auto-redirect check failed", e);
+        }
+      } else {
+        console.log("VendorAuth check: No user found");
+      }
+    };
+
+    checkUser();
+  }, [navigate]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");

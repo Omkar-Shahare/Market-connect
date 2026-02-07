@@ -15,7 +15,7 @@ export interface SignInData {
 }
 
 export interface GoogleSignInOptions {
-  userType: 'vendor' | 'supplier';
+  userType?: 'vendor' | 'supplier' | 'delivery';
 }
 
 export const authService = {
@@ -79,6 +79,13 @@ export const authService = {
     const redirectUrl = `${window.location.origin}/auth/callback`;
     console.log('Redirect URL:', redirectUrl);
 
+    // Set pendingUserType in localStorage BEFORE starting the OAuth flow
+    // This ensures it's available when the user is redirected back
+    if (userType) {
+      console.log('Setting pendingUserType in localStorage:', userType);
+      localStorage.setItem('pendingUserType', userType);
+    }
+
     try {
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -98,15 +105,11 @@ export const authService = {
       }
 
       console.log('Google Sign-In initiated successfully:', data);
-
-      if (userType) {
-        console.log('Setting pendingUserType in localStorage:', userType);
-        localStorage.setItem('pendingUserType', userType);
-      }
-
       return data;
     } catch (err) {
       console.error('Unexpected error during Google Sign-In:', err);
+      // Clean up if it fails immediately (though if it redirected, we wouldn't reach here)
+      localStorage.removeItem('pendingUserType');
       throw err;
     }
   },

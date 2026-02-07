@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { authService } from "../../services/supabaseAuth";
 import { useNavigate } from "react-router-dom";
 import { Card, CardHeader, CardContent, CardTitle, CardDescription } from "@/components/ui/card";
@@ -17,6 +17,47 @@ const DeliveryAuth: React.FC = () => {
   const [error, setError] = useState("");
   const navigate = useNavigate();
   const { profileCompleted } = useAuth();
+
+  // Auto-redirect if already logged in
+  useEffect(() => {
+    const checkUser = async () => {
+      const { data: { user } } = await authService.getCurrentUser()
+        .then(u => ({ data: { user: u } }))
+        .catch(() => ({ data: { user: null } }));
+
+      if (user) {
+        console.log("DeliveryAuth check: User found", user.id);
+        try {
+          const { data: delivery, error } = await import('@/lib/supabase').then(m => m.supabase
+            .from('delivery_partners')
+            .select('id')
+            .eq('user_id', user.id)
+            .maybeSingle()
+          );
+
+          if (error) {
+            console.error("DeliveryAuth check: Error fetching profile", error);
+          }
+
+          console.log("DeliveryAuth check: Profile result", delivery);
+
+          if (delivery) {
+            console.log("DeliveryAuth check: Redirecting to Dashboard");
+            navigate("/delivery/dashboard");
+          } else {
+            console.log("DeliveryAuth check: Redirecting to Profile Setup");
+            navigate("/delivery/profile-setup");
+          }
+        } catch (e) {
+          console.error("Auto-redirect check failed", e);
+        }
+      } else {
+        console.log("DeliveryAuth check: No user found");
+      }
+    };
+
+    checkUser();
+  }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
